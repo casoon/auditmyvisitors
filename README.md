@@ -128,25 +128,6 @@ The tool runs entirely on your local device. There is no server, no backend, no 
 
 Full privacy policy: https://auditmyvisitors.casoon.de/datenschutz
 
-## For developers — building with your own credentials
-
-To build the binary yourself you need a Google Cloud app:
-
-1. [Google Cloud Console](https://console.cloud.google.com/) → New project
-2. Enable APIs:
-   - Google Analytics Data API
-   - Google Analytics Admin API
-   - Google Search Console API
-3. Configure OAuth consent screen (type: External)
-4. Credentials → OAuth 2.0 Client ID → Type: **Desktop app**
-5. Build:
-
-```bash
-GOOGLE_CLIENT_ID=123-xxx.apps.googleusercontent.com \
-GOOGLE_CLIENT_SECRET=GOCSPX-xxx \
-cargo build --release
-```
-
 ## License
 
 MIT
