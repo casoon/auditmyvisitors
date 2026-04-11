@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="casoon/auditmyvisitors"
-BINARY="audit-my-visitors"
+BINARY="auditmyvisitors"
 INSTALL_DIR="/usr/local/bin"
 
 # Detect OS and architecture
@@ -34,7 +34,7 @@ esac
 # Get latest release URL
 DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/$ARTIFACT"
 
-echo "Downloading audit-my-visitors..."
+echo "Downloading auditmyvisitors..."
 curl -fsSL "$DOWNLOAD_URL" -o "/tmp/$BINARY"
 chmod +x "/tmp/$BINARY"
 
@@ -56,7 +56,7 @@ else
 fi
 
 echo ""
-echo "✓ audit-my-visitors installed to $INSTALL_DIR/$BINARY"
+echo "✓ auditmyvisitors installed to $INSTALL_DIR/$BINARY"
 echo ""
 echo "Get started:"
-echo "  audit-my-visitors auth login"
+echo "  auditmyvisitors auth login"

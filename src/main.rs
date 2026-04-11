@@ -54,7 +54,7 @@ async fn handle_auth(action: AuthAction, _config: &AppConfig) -> anyhow::Result<
         AuthAction::Login => {
             auth::run_oauth_login().await?;
             println!("\n{} Du bist jetzt eingeloggt.", "✓".green().bold());
-            println!("Nächster Schritt: {}", "audit-my-visitors properties select".cyan());
+            println!("Nächster Schritt: {}", "auditmyvisitors properties select".cyan());
         }
         AuthAction::Status => {
             let status = auth::auth_status()?;
@@ -72,7 +72,7 @@ async fn handle_auth(action: AuthAction, _config: &AppConfig) -> anyhow::Result<
 
 async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> anyhow::Result<()> {
     let token = auth::ensure_valid_token().await
-        .context("Bitte zuerst einloggen: audit-my-visitors auth login")?;
+        .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
 
     match action {
         PropertiesAction::List => {
@@ -164,7 +164,7 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
 
 async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Result<()> {
     let token = auth::ensure_valid_token().await
-        .context("Bitte zuerst einloggen: audit-my-visitors auth login")?;
+        .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
 
     match action {
         ReportAction::Overview { days } => {

@@ -27,7 +27,7 @@ impl StoredTokens {
 
 fn token_path() -> anyhow::Result<PathBuf> {
     let base = dirs::config_dir().context("Cannot determine config directory")?;
-    Ok(base.join("audit-my-visitors").join("tokens.json"))
+    Ok(base.join("auditmyvisitors").join("tokens.json"))
 }
 
 pub fn load_tokens() -> anyhow::Result<Option<StoredTokens>> {

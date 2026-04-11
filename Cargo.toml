@@ -1,12 +1,12 @@
 [package]
-name = "audit-my-visitors"
+name = "auditmyvisitors"
 version = "0.1.0"
 edition = "2021"
 description = "CLI tool for Google Analytics 4 and Search Console reporting"
 license = "MIT"
 
 [[bin]]
-name = "audit-my-visitors"
+name = "auditmyvisitors"
 path = "src/main.rs"
 
 [dependencies]

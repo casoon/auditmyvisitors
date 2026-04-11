@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "audit-my-visitors",
+    name = "auditmyvisitors",
     about = "Google Analytics 4 & Search Console reporting for website owners",
     version
 )]

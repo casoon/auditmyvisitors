@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::errors::Result;
 use crate::errors::AppError;
 
-/// Top-level config stored in ~/.config/audit-my-visitors/config.toml
+/// Top-level config stored in ~/.config/auditmyvisitors/config.toml
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     #[serde(default)]
@@ -47,7 +47,7 @@ impl AppConfig {
     pub fn config_dir() -> anyhow::Result<PathBuf> {
         let base = dirs::config_dir()
             .context("Cannot determine config directory")?;
-        Ok(base.join("audit-my-visitors"))
+        Ok(base.join("auditmyvisitors"))
     }
 
     pub fn config_path() -> anyhow::Result<PathBuf> {

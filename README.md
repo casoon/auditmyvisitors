@@ -1,9 +1,9 @@
-# audit-my-visitors
+# auditmyvisitors
 
 Google Analytics 4 and Search Console reports directly in your terminal.
 
 ```
-audit-my-visitors report overview
+auditmyvisitors report overview
 ```
 
 ```
@@ -35,7 +35,7 @@ INSIGHTS
 curl -fsSL https://raw.githubusercontent.com/casoon/auditmyvisitors/main/install.sh | bash
 ```
 
-Installs `audit-my-visitors` to `/usr/local/bin` (or `~/bin` if no write access).
+Installs `auditmyvisitors` to `/usr/local/bin` (or `~/bin` if no write access).
 
 ### Windows
 
@@ -48,20 +48,20 @@ Download the latest binary from the [releases page](https://github.com/casoon/au
 git clone https://github.com/casoon/auditmyvisitors
 cd auditmyvisitors
 cargo build --release
-./target/release/audit-my-visitors --help
+./target/release/auditmyvisitors --help
 ```
 
 ## Getting started
 
 ```bash
 # 1. Log in with Google (opens browser)
-audit-my-visitors auth login
+auditmyvisitors auth login
 
 # 2. Select your GA4 and Search Console property
-audit-my-visitors properties select
+auditmyvisitors properties select
 
 # 3. Run your first report
-audit-my-visitors report overview
+auditmyvisitors report overview
 ```
 
 ## Commands
@@ -69,49 +69,49 @@ audit-my-visitors report overview
 ### Authentication
 
 ```bash
-audit-my-visitors auth login     # Log in via browser
-audit-my-visitors auth status    # Check login status
-audit-my-visitors auth logout    # Remove stored tokens
+auditmyvisitors auth login     # Log in via browser
+auditmyvisitors auth status    # Check login status
+auditmyvisitors auth logout    # Remove stored tokens
 ```
 
 ### Properties
 
 ```bash
-audit-my-visitors properties list    # List all available properties
-audit-my-visitors properties select  # Interactively select active property
+auditmyvisitors properties list    # List all available properties
+auditmyvisitors properties select  # Interactively select active property
 ```
 
 ### Reports
 
 ```bash
 # Site overview (default: last 28 days)
-audit-my-visitors report overview
-audit-my-visitors report overview --days 90
+auditmyvisitors report overview
+auditmyvisitors report overview --days 90
 
 # Top pages
-audit-my-visitors report top-pages
-audit-my-visitors report top-pages --limit 50 --sort-by clicks
+auditmyvisitors report top-pages
+auditmyvisitors report top-pages --limit 50 --sort-by clicks
 
 # Single page detail
-audit-my-visitors report page --url https://example.com/my-page
+auditmyvisitors report page --url https://example.com/my-page
 
 # Before/after comparison around a change date
-audit-my-visitors report compare --since 2026-03-01 --before 30 --after 30
-audit-my-visitors report compare --url https://example.com/page --since 2026-03-01
+auditmyvisitors report compare --since 2026-03-01 --before 30 --after 30
+auditmyvisitors report compare --url https://example.com/page --since 2026-03-01
 ```
 
 ### Export
 
 ```bash
-audit-my-visitors export pdf --report latest
-audit-my-visitors export pdf --report latest --output ./my-report.pdf
+auditmyvisitors export pdf --report latest
+auditmyvisitors export pdf --report latest --output ./my-report.pdf
 ```
 
 ## Privacy
 
 The tool runs entirely on your local device. There is no server, no backend, no cloud infrastructure.
 
-- OAuth tokens are stored locally at `~/.config/audit-my-visitors/tokens.json`
+- OAuth tokens are stored locally at `~/.config/auditmyvisitors/tokens.json`
 - No data is shared with third parties
 - Read-only access to GA4 and Search Console
 

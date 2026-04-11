@@ -22,7 +22,7 @@ pub fn print_auth_status(status: &crate::auth::AuthStatus) {
             println!(
                 "{} Nicht eingeloggt. Starte mit: {}",
                 "✗".red().bold(),
-                "audit-my-visitors auth login".cyan()
+                "auditmyvisitors auth login".cyan()
             );
         }
     }
