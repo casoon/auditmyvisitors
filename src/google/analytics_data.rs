@@ -23,6 +23,14 @@ impl DateRange {
             end_date: "yesterday".into(),
         }
     }
+
+    /// The previous period of the same length (for trend comparison)
+    pub fn prev_period(n: u32) -> Self {
+        Self {
+            start_date: format!("{}daysAgo", n * 2),
+            end_date: format!("{}daysAgo", n + 1),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

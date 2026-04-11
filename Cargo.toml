@@ -45,7 +45,7 @@ oauth2 = "4"
 webbrowser = "1"
 
 # PDF generation
-printpdf = "0.7"
+renderreport = "0.2.4"
 
 # Error handling
 thiserror = "1"

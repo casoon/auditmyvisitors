@@ -6,6 +6,7 @@ mod errors;
 mod export;
 mod google;
 mod insights;
+mod opportunities;
 mod reports;
 mod storage;
 mod ui;
@@ -208,24 +209,46 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
 
 async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Result<()> {
     match action {
-        ExportAction::Pdf { report: _, output } => {
+        ExportAction::Pdf { days, output } => {
+            let token = auth::ensure_valid_token().await
+                .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
+
+            let days = days.unwrap_or(config.report.default_days);
+
+            let pb = spinner(&format!("Daten für letzte {} Tage werden geladen…", days));
+
+            let (overview, top_pages) = tokio::join!(
+                reports::overview::build(config, &token, days),
+                reports::top_pages::build(config, &token, days, 15, "sessions"),
+            );
+            let overview = overview?;
+            let top_pages = top_pages?;
+
+            pb.set_message("PDF wird erstellt…");
+
+            let property_slug = config
+                .properties
+                .ga4_property_name
+                .as_deref()
+                .unwrap_or("report")
+                .to_lowercase()
+                .replace(' ', "-");
+
             let path = output.unwrap_or_else(|| {
-                format!("report-{}.pdf", chrono::Utc::now().format("%Y-%m-%d"))
+                let date = chrono::Utc::now().format("%Y-%m-%d");
+                format!("output/{}-{}.pdf", property_slug, date)
             });
 
-            // Phase 4: full PDF layout. For now, generate a placeholder.
-            let opts = export::pdf::PdfExportOptions {
-                output_path: path.clone(),
-                title: "Audit My Visitors Report".into(),
-                property_name: config.properties.ga4_property_name
-                    .clone()
-                    .unwrap_or_else(|| "unbekannt".into()),
-                date_range: format!("Erstellt am {}", chrono::Utc::now().format("%Y-%m-%d")),
-            };
+            // Ensure output dir exists
+            if let Some(parent) = std::path::Path::new(&path).parent() {
+                std::fs::create_dir_all(parent)
+                    .with_context(|| format!("Verzeichnis {} kann nicht erstellt werden", parent.display()))?;
+            }
 
-            export::pdf::export_pdf(opts, "Report wird in Phase 4 vollständig implementiert.")
-                .context("PDF-Export fehlgeschlagen")?;
+            let vm = export::builder::build_view_model(&overview, &top_pages);
+            export::pdf::generate(&vm, &path).context("PDF-Export fehlgeschlagen")?;
 
+            pb.finish_and_clear();
             println!("{} PDF gespeichert: {}", "✓".green().bold(), path.cyan());
         }
     }

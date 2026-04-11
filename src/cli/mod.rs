@@ -117,13 +117,13 @@ pub enum ReportAction {
 
 #[derive(Debug, Subcommand)]
 pub enum ExportAction {
-    /// Export the latest report as PDF
+    /// Export a full PDF report (fetches live data)
     Pdf {
-        /// Which report to export: latest (default)
-        #[arg(long, default_value = "latest")]
-        report: String,
+        /// Number of days to look back (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
 
-        /// Output file path (default: ./report-YYYY-MM-DD.pdf)
+        /// Output file path (default: ./output/<property>-YYYY-MM-DD.pdf)
         #[arg(long, short = 'o')]
         output: Option<String>,
     },
