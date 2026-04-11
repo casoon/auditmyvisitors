@@ -33,19 +33,19 @@ INSIGHTS
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/casoon/audit-my-visitors/releases/latest/download/audit-my-visitors-macos-arm64 \
+curl -L https://github.com/casoon/auditmyvisitors/releases/latest/download/auditmyvisitors-macos-arm64 \
   -o audit-my-visitors
 chmod +x audit-my-visitors
 sudo mv audit-my-visitors /usr/local/bin/
 
 # macOS (Intel)
-curl -L https://github.com/casoon/audit-my-visitors/releases/latest/download/audit-my-visitors-macos-x86_64 \
+curl -L https://github.com/casoon/auditmyvisitors/releases/latest/download/auditmyvisitors-macos-x86_64 \
   -o audit-my-visitors
 chmod +x audit-my-visitors
 sudo mv audit-my-visitors /usr/local/bin/
 
 # Linux (x86_64)
-curl -L https://github.com/casoon/audit-my-visitors/releases/latest/download/audit-my-visitors-linux-x86_64 \
+curl -L https://github.com/casoon/auditmyvisitors/releases/latest/download/auditmyvisitors-linux-x86_64 \
   -o audit-my-visitors
 chmod +x audit-my-visitors
 sudo mv audit-my-visitors /usr/local/bin/
@@ -55,7 +55,7 @@ sudo mv audit-my-visitors /usr/local/bin/
 
 ```bash
 # Requires Rust (https://rustup.rs)
-git clone https://github.com/casoon/audit-my-visitors
+git clone https://github.com/casoon/auditmyvisitors
 cd audit-my-visitors
 
 GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=xxx cargo build --release
