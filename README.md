@@ -29,27 +29,17 @@ INSIGHTS
 
 ## Installation
 
-### macOS / Linux — download binary
+### macOS / Linux — one-line installer
 
 ```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/casoon/auditmyvisitors/releases/latest/download/auditmyvisitors-macos-arm64 \
-  -o audit-my-visitors
-chmod +x audit-my-visitors
-sudo mv audit-my-visitors /usr/local/bin/
-
-# macOS (Intel)
-curl -L https://github.com/casoon/auditmyvisitors/releases/latest/download/auditmyvisitors-macos-x86_64 \
-  -o audit-my-visitors
-chmod +x audit-my-visitors
-sudo mv audit-my-visitors /usr/local/bin/
-
-# Linux (x86_64)
-curl -L https://github.com/casoon/auditmyvisitors/releases/latest/download/auditmyvisitors-linux-x86_64 \
-  -o audit-my-visitors
-chmod +x audit-my-visitors
-sudo mv audit-my-visitors /usr/local/bin/
+curl -fsSL https://raw.githubusercontent.com/casoon/auditmyvisitors/main/install.sh | bash
 ```
+
+Installs `audit-my-visitors` to `/usr/local/bin` (or `~/bin` if no write access).
+
+### Windows
+
+Download the latest binary from the [releases page](https://github.com/casoon/auditmyvisitors/releases/latest) and add it to your `PATH`.
 
 ### Build from source
 
