@@ -56,9 +56,8 @@ sudo mv audit-my-visitors /usr/local/bin/
 ```bash
 # Requires Rust (https://rustup.rs)
 git clone https://github.com/casoon/auditmyvisitors
-cd audit-my-visitors
-
-GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=xxx cargo build --release
+cd auditmyvisitors
+cargo build --release
 ./target/release/audit-my-visitors --help
 ```
 
