@@ -1,0 +1,89 @@
+[package]
+name = "audit-my-visitors"
+version = "0.1.0"
+edition = "2021"
+description = "CLI tool for Google Analytics 4 and Search Console reporting"
+license = "MIT"
+
+[[bin]]
+name = "audit-my-visitors"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive", "env"] }
+
+# Interactive terminal prompts
+inquire = "0.7"
+
+# Terminal tables
+comfy-table = "7"
+
+# Terminal progress indicators
+indicatif = "0.17"
+
+# Terminal colors
+colored = "2"
+
+# JSON serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# TOML config files
+toml = "0.8"
+
+# OAuth2 with PKCE
+oauth2 = "4"
+
+# Open browser
+webbrowser = "1"
+
+# PDF generation
+printpdf = "0.7"
+
+# Error handling
+thiserror = "1"
+anyhow = "1"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Platform directories (~/.config, etc.)
+dirs = "5"
+
+# URL parsing
+url = { version = "2", features = ["serde"] }
+
+# URL encoding
+urlencoding = "2"
+
+# Cryptography for PKCE
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.8"
+
+# Async utilities
+futures = "0.3"
+
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Secure token storage (encrypt tokens at rest)
+keyring = "3"
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
