@@ -27,7 +27,7 @@ pub fn wait_for_redirect(port: u16) -> anyhow::Result<String> {
     // Send a simple HTML response so the browser shows something useful
     let html = "<html><body><h2>Login erfolgreich ✓</h2><p>Du kannst diesen Tab schließen.</p></body></html>";
     let response = format!(
-        "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: {}\r\n\r\n{}",
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\n\r\n{}",
         html.len(),
         html
     );
