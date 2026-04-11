@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     name: Build ${{ matrix.artifact }}
@@ -18,22 +21,22 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: auditmyvisitors-macos-arm64
-            binary: audit-my-visitors
+            binary: auditmyvisitors
 
           - os: macos-latest
             target: x86_64-apple-darwin
             artifact: auditmyvisitors-macos-x86_64
-            binary: audit-my-visitors
+            binary: auditmyvisitors
 
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact: auditmyvisitors-linux-x86_64
-            binary: audit-my-visitors
+            binary: auditmyvisitors
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: auditmyvisitors-windows-x86_64.exe
-            binary: audit-my-visitors.exe
+            binary: auditmyvisitors.exe
 
     steps:
       - uses: actions/checkout@v4
