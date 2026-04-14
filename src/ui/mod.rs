@@ -220,6 +220,53 @@ pub fn print_top_pages(report: &TopPagesReport) {
     print_insights(&report.insights);
 }
 
+pub fn print_weakest_pages(report: &TopPagesReport) {
+    println!("\n{}", "PAGES WITH THE BIGGEST ISSUES".bold().underline());
+    println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+
+    let mut table = Table::new();
+    table.set_header(vec![
+        Cell::new("#"),
+        Cell::new("Page"),
+        Cell::new("Sessions"),
+        Cell::new("Organic"),
+        Cell::new("Engagement"),
+        Cell::new("Bounce"),
+        Cell::new("Clicks"),
+        Cell::new("Impr."),
+        Cell::new("CTR"),
+        Cell::new("Pos."),
+        Cell::new("Issue"),
+    ]);
+
+    for (i, page) in report.pages.iter().enumerate() {
+        let short_url = shorten_url(&page.url, 40);
+        table.add_row(vec![
+            Cell::new(i + 1).set_alignment(CellAlignment::Right),
+            Cell::new(&short_url),
+            Cell::new(format_number(page.sessions)).set_alignment(CellAlignment::Right),
+            Cell::new(format!(
+                "{:.0}%",
+                if page.sessions > 0 {
+                    page.organic_sessions as f64 / page.sessions as f64 * 100.0
+                } else {
+                    0.0
+                }
+            ))
+            .set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.0}%", page.engagement_rate * 100.0)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.0}%", page.bounce_rate * 100.0)).set_alignment(CellAlignment::Right),
+            Cell::new(format_f64(page.search.clicks)).set_alignment(CellAlignment::Right),
+            Cell::new(format_f64(page.search.impressions)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.1}%", page.search.ctr * 100.0)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.1}", page.search.average_position)).set_alignment(CellAlignment::Right),
+            Cell::new(weak_page_signal(page)),
+        ]);
+    }
+
+    println!("{table}\n");
+}
+
 // ─── Page detail ─────────────────────────────────────────────────────────────
 
 pub fn print_page_detail(report: &PageDetailReport) {
@@ -802,6 +849,36 @@ fn query_signal(q: &crate::domain::QueryRow) -> String {
         "Strong".green().to_string()
     } else {
         String::new()
+    }
+}
+
+fn weak_page_signal(page: &crate::domain::PageSummary) -> String {
+    use crate::opportunities::expected_ctr;
+
+    if page.search.impressions > 200.0
+        && page.search.average_position > 0.0
+        && page.search.average_position <= 10.0
+        && page.search.ctr < expected_ctr(page.search.average_position) * 0.7
+        && page.engagement_rate < 0.3
+    {
+        "Intent mismatch".yellow().to_string()
+    } else if page.search.impressions > 200.0
+        && page.search.average_position > 0.0
+        && page.search.average_position <= 10.0
+        && page.search.ctr < expected_ctr(page.search.average_position) * 0.7
+    {
+        "Snippet issue".yellow().to_string()
+    } else if page.search.average_position > 10.0
+        && page.search.average_position <= 20.0
+        && page.search.impressions > 200.0
+    {
+        "Ranking issue".blue().to_string()
+    } else if page.engagement_rate < 0.3 && page.sessions >= 20 {
+        "Weak engagement".red().to_string()
+    } else if page.bounce_rate > 0.7 && page.sessions >= 20 {
+        "High bounce".red().to_string()
+    } else {
+        "Needs review".dimmed().to_string()
     }
 }
 

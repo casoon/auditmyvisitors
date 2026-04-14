@@ -3,6 +3,7 @@ use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::config::AppConfig;
+use crate::domain::{PageSummary, TopPagesReport};
 use crate::{auth, export, narrative, reports, snapshots, ui};
 
 // ─── Time range ─────────────────────────────────────────────────────────────
@@ -35,7 +36,7 @@ fn ask_days() -> anyhow::Result<u32> {
 // ─── Main menu ──────────────────────────────────────────────────────────────
 
 const MENU_REPORT: &str = "Run full report";
-const MENU_PAGE: &str = "Page detail (single URL)";
+const MENU_PAGE: &str = "Page performance: top 20 / weakest 20";
 const MENU_COMPARE: &str = "Before/after comparison";
 const MENU_EXPORT: &str = "Export…";
 const MENU_PROPERTY: &str = "Switch property";
@@ -63,7 +64,7 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
             MENU_EXIT,
         ];
 
-        let choice = inquire::Select::new("What would you like to do?", menu).prompt()?;
+        let choice = inquire::Select::new("What would you like to do next?", menu).prompt()?;
 
         // Refresh token before each action
         if choice != MENU_EXIT {
@@ -74,7 +75,7 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
 
         match choice {
             MENU_REPORT => run_full_report(config, &token, days).await,
-            MENU_PAGE => run_page_detail(config, &token, days).await,
+            MENU_PAGE => run_page_performance(config, &token, days).await,
             MENU_COMPARE => run_compare(config, &token).await,
             MENU_EXPORT => run_export(config, &token, days).await,
             MENU_PROPERTY => {
@@ -229,19 +230,92 @@ async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::
     Ok(())
 }
 
-// ─── Page Detail ────────────────────────────────────────────────────────────
+// ─── Page Performance ───────────────────────────────────────────────────────
 
-async fn run_page_detail(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
-    let url: String = inquire::Text::new("Page URL or path:")
-        .with_placeholder("/blog/my-article")
-        .prompt()?;
-
-    let pb = spinner(&format!("Loading details for {}…", url));
-    let report = reports::page_detail::build(config, token, &url, days).await?;
+async fn run_page_performance(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
+    let pb = spinner(&format!("Loading page performance for last {} days…", days));
+    let full_report = reports::top_pages::build(config, token, days, 500, "sessions").await?;
     pb.finish_and_clear();
-    ui::print_page_detail(&report);
+
+    let top_report = TopPagesReport {
+        property_name: full_report.property_name.clone(),
+        date_range: full_report.date_range.clone(),
+        pages: full_report.pages.iter().take(20).cloned().collect(),
+        insights: full_report.insights.clone(),
+    };
+    ui::print_top_pages(&top_report);
+
+    let weakest_pages = weakest_pages(&full_report.pages, 20);
+    let weakest_report = TopPagesReport {
+        property_name: full_report.property_name,
+        date_range: full_report.date_range,
+        pages: weakest_pages,
+        insights: vec![],
+    };
+    ui::print_weakest_pages(&weakest_report);
 
     Ok(())
+}
+
+fn weakest_pages(pages: &[PageSummary], limit: usize) -> Vec<PageSummary> {
+    let mut ranked: Vec<(f64, &PageSummary)> = pages
+        .iter()
+        .filter_map(|page| {
+            let score = page_weakness_score(page)?;
+            Some((score, page))
+        })
+        .collect();
+
+    ranked.sort_by(|a, b| {
+        b.0.partial_cmp(&a.0)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    ranked
+        .into_iter()
+        .take(limit)
+        .map(|(_, page)| page.clone())
+        .collect()
+}
+
+fn page_weakness_score(page: &PageSummary) -> Option<f64> {
+    if page.sessions < 20 && page.search.impressions < 200.0 {
+        return None;
+    }
+
+    let mut score = 0.0;
+
+    if page.engagement_rate < 0.30 && page.sessions >= 20 {
+        score += (0.30 - page.engagement_rate) * 200.0;
+    }
+
+    if page.bounce_rate > 0.70 && page.sessions >= 20 {
+        score += (page.bounce_rate - 0.70) * 120.0;
+    }
+
+    if page.search.impressions > 200.0
+        && page.search.average_position > 0.0
+        && page.search.average_position <= 10.0
+    {
+        let expected_ctr = crate::opportunities::expected_ctr(page.search.average_position);
+        if expected_ctr > page.search.ctr {
+            score += (expected_ctr - page.search.ctr) * page.search.impressions;
+        }
+    }
+
+    if page.search.impressions > 500.0 && page.search.clicks < 10.0 {
+        score += 20.0;
+    }
+
+    if page.search.average_position > 10.0 && page.search.average_position <= 20.0 && page.search.impressions > 200.0 {
+        score += 15.0;
+    }
+
+    if score <= 0.0 {
+        None
+    } else {
+        Some(score)
+    }
 }
 
 // ─── Compare ────────────────────────────────────────────────────────────────
