@@ -1,15 +1,16 @@
 use std::io::Write;
 
 use crate::domain::{
-    ChannelsReport, CountriesReport, DecayReport, DevicesReport, OpportunitiesReport,
-    QueriesReport, TopPagesReport,
+    ChannelsReport, ClustersReport, CountriesReport, DecayReport, DevicesReport,
+    OpportunitiesReport, QueriesReport, TopPagesReport,
 };
 
 pub fn write_top_pages(report: &TopPagesReport, w: impl Write) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(w);
     wtr.write_record([
-        "URL", "Sessions", "Organisch", "Direkt", "Engagement %",
-        "Ø Dauer (s)", "Klicks", "Impressionen", "CTR", "Position",
+        "URL", "Sessions", "Organic", "Direct", "Engagement %",
+        "Bounce %", "Avg Duration (s)", "New Users %", "Key Events",
+        "Clicks", "Impressions", "CTR", "Position",
     ])?;
     for p in &report.pages {
         wtr.write_record([
@@ -18,7 +19,10 @@ pub fn write_top_pages(report: &TopPagesReport, w: impl Write) -> anyhow::Result
             &p.organic_sessions.to_string(),
             &p.direct_sessions.to_string(),
             &format!("{:.1}", p.engagement_rate * 100.0),
+            &format!("{:.1}", p.bounce_rate * 100.0),
             &format!("{:.1}", p.avg_session_duration_secs),
+            &format!("{:.0}", p.new_user_share * 100.0),
+            &p.key_events.to_string(),
             &format!("{:.0}", p.search.clicks),
             &format!("{:.0}", p.search.impressions),
             &format!("{:.4}", p.search.ctr),
@@ -31,7 +35,7 @@ pub fn write_top_pages(report: &TopPagesReport, w: impl Write) -> anyhow::Result
 
 pub fn write_queries(report: &QueriesReport, w: impl Write) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(w);
-    wtr.write_record(["Query", "Klicks", "Impressionen", "CTR", "Position"])?;
+    wtr.write_record(["Query", "Clicks", "Impressions", "CTR", "Position"])?;
     for q in &report.queries {
         wtr.write_record([
             &q.query,
@@ -48,7 +52,7 @@ pub fn write_queries(report: &QueriesReport, w: impl Write) -> anyhow::Result<()
 pub fn write_opportunities(report: &OpportunitiesReport, w: impl Write) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(w);
     wtr.write_record([
-        "Score", "Typ", "Keyword", "URL", "+ Klicks", "Aktuelle Klicks", "Aktion",
+        "Score", "Type", "Keyword", "URL", "+ Clicks", "Current Clicks", "Action",
     ])?;
     for o in &report.opportunities {
         wtr.write_record([
@@ -67,7 +71,7 @@ pub fn write_opportunities(report: &OpportunitiesReport, w: impl Write) -> anyho
 
 pub fn write_channels(report: &ChannelsReport, w: impl Write) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(w);
-    wtr.write_record(["Kanal", "Sessions", "Anteil %", "Engagement %", "Ø Dauer (s)"])?;
+    wtr.write_record(["Channel", "Sessions", "Share %", "Engagement %", "Avg Duration (s)"])?;
     for ch in &report.channels {
         wtr.write_record([
             &ch.channel,
@@ -83,7 +87,7 @@ pub fn write_channels(report: &ChannelsReport, w: impl Write) -> anyhow::Result<
 
 pub fn write_devices(report: &DevicesReport, w: impl Write) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(w);
-    wtr.write_record(["Gerät", "Sessions", "Anteil %", "Engagement %", "Ø Dauer (s)"])?;
+    wtr.write_record(["Device", "Sessions", "Share %", "Engagement %", "Avg Duration (s)"])?;
     for d in &report.devices {
         wtr.write_record([
             &d.device,
@@ -99,7 +103,7 @@ pub fn write_devices(report: &DevicesReport, w: impl Write) -> anyhow::Result<()
 
 pub fn write_countries(report: &CountriesReport, w: impl Write) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(w);
-    wtr.write_record(["Land", "Sessions", "Anteil %", "Engagement %"])?;
+    wtr.write_record(["Country", "Sessions", "Share %", "Engagement %"])?;
     for c in &report.countries {
         wtr.write_record([
             &c.country,
@@ -112,12 +116,35 @@ pub fn write_countries(report: &CountriesReport, w: impl Write) -> anyhow::Resul
     Ok(())
 }
 
+pub fn write_clusters(report: &ClustersReport, w: impl Write) -> anyhow::Result<()> {
+    let mut wtr = csv::Writer::from_writer(w);
+    wtr.write_record([
+        "Cluster", "Pages", "Queries", "Sessions", "Clicks",
+        "Impressions", "CTR", "Avg Position", "CTR Potential",
+    ])?;
+    for c in &report.clusters {
+        wtr.write_record([
+            &c.name,
+            &c.pages.to_string(),
+            &c.queries.to_string(),
+            &c.sessions.to_string(),
+            &format!("{:.0}", c.clicks),
+            &format!("{:.0}", c.impressions),
+            &format!("{:.4}", c.ctr),
+            &format!("{:.1}", c.avg_position),
+            &format!("{:.0}", c.ctr_potential),
+        ])?;
+    }
+    wtr.flush()?;
+    Ok(())
+}
+
 pub fn write_decay(report: &DecayReport, w: impl Write) -> anyhow::Result<()> {
     let mut wtr = csv::Writer::from_writer(w);
     wtr.write_record([
-        "URL", "Klicks vorher", "Klicks nachher", "Δ Klicks %",
-        "Impressionen vorher", "Impressionen nachher", "Δ Impressionen %",
-        "Position vorher", "Position nachher", "Δ Position",
+        "URL", "Clicks Before", "Clicks After", "Δ Clicks %",
+        "Impressions Before", "Impressions After", "Δ Impressions %",
+        "Position Before", "Position After", "Δ Position",
     ])?;
     for p in &report.declining_pages {
         wtr.write_record([

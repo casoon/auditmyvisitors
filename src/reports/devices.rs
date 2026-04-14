@@ -11,7 +11,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         .clone()
         .unwrap_or_else(|| property_id.clone());
 
-    let date_label = format!("letzte {} Tage", days);
+    let date_label = format!("last {} days", days);
 
     let req = ReportRequest {
         property_id,
@@ -70,8 +70,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             insights.push(Insight {
                 severity: InsightSeverity::Info,
                 category: InsightCategory::Traffic,
-                headline: format!("Mobile-dominiert: {:.0}% des Traffics", m.share_pct),
-                explanation: "Ueber 60% der Sessions kommen von Mobilgeraeten. Mobile UX und Ladezeit priorisieren.".into(),
+                headline: format!("Mobile-dominated: {:.0}% of traffic", m.share_pct),
+                explanation: "Over 60% of sessions come from mobile devices. Prioritize mobile UX and load time.".into(),
             });
         }
 
@@ -80,9 +80,9 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
                 insights.push(Insight {
                     severity: InsightSeverity::Warning,
                     category: InsightCategory::Engagement,
-                    headline: "Mobile Engagement deutlich schwaecher als Desktop".into(),
+                    headline: "Mobile engagement significantly weaker than desktop".into(),
                     explanation: format!(
-                        "Mobile: {:.0}% vs Desktop: {:.0}% Engagement Rate. Mobile UX pruefen.",
+                        "Mobile: {:.0}% vs desktop: {:.0}% engagement rate. Check mobile UX.",
                         m.engagement_rate * 100.0, d.engagement_rate * 100.0
                     ),
                 });
@@ -96,9 +96,9 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             insights.push(Insight {
                 severity: InsightSeverity::Info,
                 category: InsightCategory::Engagement,
-                headline: "Tablet-Engagement niedrig".into(),
+                headline: "Tablet engagement low".into(),
                 explanation: format!(
-                    "Nur {:.0}% Engagement Rate auf Tablets ({} Sessions). Responsive Layout pruefen.",
+                    "Only {:.0}% engagement rate on tablets ({} sessions). Check responsive layout.",
                     t.engagement_rate * 100.0, t.sessions
                 ),
             });

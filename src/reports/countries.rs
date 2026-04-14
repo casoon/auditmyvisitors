@@ -16,7 +16,7 @@ pub async fn build(
         .clone()
         .unwrap_or_else(|| property_id.clone());
 
-    let date_label = format!("letzte {} Tage", days);
+    let date_label = format!("last {} days", days);
 
     let req = ReportRequest {
         property_id,
@@ -71,8 +71,8 @@ pub async fn build(
             insights.push(Insight {
                 severity: InsightSeverity::Info,
                 category: InsightCategory::Traffic,
-                headline: format!("Stark auf {} konzentriert ({:.0}%)", top.country, top.share_pct),
-                explanation: "Ueber 80% des Traffics aus einem Land. Internationalisierung koennte Wachstumspotenzial bieten.".into(),
+                headline: format!("Heavily concentrated on {} ({:.0}%)", top.country, top.share_pct),
+                explanation: "Over 80% of traffic from one country. Internationalization could offer growth potential.".into(),
             });
         }
     }
@@ -86,9 +86,9 @@ pub async fn build(
         insights.push(Insight {
             severity: InsightSeverity::Warning,
             category: InsightCategory::Engagement,
-            headline: format!("{} Laender mit schwachem Engagement", low_eng.len()),
+            headline: format!("{} countries with weak engagement", low_eng.len()),
             explanation: format!(
-                "Unter 25% Engagement: {}. Sprachliche oder inhaltliche Anpassung pruefen.",
+                "Below 25% engagement: {}. Check language or content adaptation.",
                 names.join(", ")
             ),
         });
@@ -101,9 +101,9 @@ pub async fn build(
             insights.push(Insight {
                 severity: InsightSeverity::Positive,
                 category: InsightCategory::Traffic,
-                headline: "Breite internationale Verteilung".into(),
+                headline: "Broad international distribution".into(),
                 explanation: format!(
-                    "Top 3 Laender machen nur {:.0}% aus — Traffic ist gut diversifiziert.",
+                    "Top 3 countries account for only {:.0}% — traffic is well diversified.",
                     top3_share
                 ),
             });

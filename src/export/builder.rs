@@ -109,17 +109,17 @@ pub fn build_view_model(
             .unwrap_or("?");
         let labels = o.type_labels.join(" + ");
         format!(
-            "{}: \"{}\" - +{:.0} Klicks moeglich ({})",
+            "{}: \"{}\" - +{:.0} clicks possible ({})",
             labels, kw, o.estimated_clicks, o.opportunity_type.effort_label()
         )
     }).collect();
 
     // ── Channel rows ─────────────────────────────────────────────────────────
     let mut channels: Vec<(&str, i64)> = vec![
-        ("Organische Suche", t.organic_sessions),
-        ("Direkt",           t.direct_sessions),
+        ("Organic Search",   t.organic_sessions),
+        ("Direct",           t.direct_sessions),
         ("Referral",         t.referral_sessions),
-        ("Sonstige",         t.other_sessions),
+        ("Other",            t.other_sessions),
     ];
     channels.retain(|(_, n)| *n > 0);
     channels.sort_by(|a, b| b.1.cmp(&a.1));
@@ -217,7 +217,7 @@ fn opp_to_row(o: &Opportunity) -> OpportunityRow {
     let pct = if o.current_clicks > 0.5 {
         format!("+{:.0}%", o.estimated_clicks / o.current_clicks * 100.0)
     } else {
-        "neu".into()
+        "new".into()
     };
 
     OpportunityRow {

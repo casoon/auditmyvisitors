@@ -19,7 +19,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         .clone()
         .unwrap_or_else(|| property_id.clone());
 
-    let date_label = format!("letzte {} Tage", days);
+    let date_label = format!("last {} days", days);
 
     // ── Search Console: top queries ──────────────────────────────────────────
     let queries_req = SearchAnalyticsRequest {
@@ -75,6 +75,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             impressions: r.impressions,
             ctr: r.ctr,
             position: r.position,
+            intent: None,
         })
         .collect();
 
@@ -91,7 +92,10 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             organic_sessions: 0,
             direct_sessions: 0,
             engagement_rate: 0.0,
+            bounce_rate: 0.0,
             avg_session_duration_secs: 0.0,
+            new_user_share: 0.0,
+            key_events: 0,
             search: SearchPerformanceBreakdown::default(),
         });
         entry.sessions += sessions;
@@ -108,7 +112,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
     let pages: Vec<PageSummary> = page_map.into_values().collect();
 
     // ── Generate opportunities ────────────────────────────────────────────────
-    let opportunities = generate_opportunities(&query_rows, &pages, days);
+    let opportunities = generate_opportunities(&query_rows, &pages, days, &config.report.brand_terms);
 
     let total_estimated_clicks: f64 = opportunities.iter().map(|o| o.estimated_clicks).sum();
 
@@ -118,28 +122,40 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
     // ── Insights ─────────────────────────────────────────────────────────────
     let mut insights = Vec::new();
 
-    let ctr_fixes: usize = opportunities.iter()
-        .filter(|o| o.opportunity_type == OpportunityType::CtrFix)
+    let snippet_count: usize = opportunities.iter()
+        .filter(|o| matches!(o.opportunity_type, OpportunityType::SnippetProblem | OpportunityType::CtrFix))
         .count();
-    let ranking_pushes: usize = opportunities.iter()
-        .filter(|o| o.opportunity_type == OpportunityType::RankingPush)
+    let ranking_count: usize = opportunities.iter()
+        .filter(|o| matches!(o.opportunity_type, OpportunityType::RankingProblem | OpportunityType::RankingPush))
+        .count();
+    let intent_count: usize = opportunities.iter()
+        .filter(|o| o.opportunity_type == OpportunityType::IntentMismatch)
         .count();
 
-    if ctr_fixes > 3 {
+    if snippet_count > 3 {
         insights.push(Insight {
             severity: InsightSeverity::Warning,
             category: InsightCategory::Search,
-            headline: format!("{} Keywords mit CTR-Potenzial", ctr_fixes),
-            explanation: "Mehrere Keywords ranken gut, aber die CTR liegt unter dem Erwartungswert. Title und Description systematisch ueberarbeiten.".into(),
+            headline: format!("{} snippet issues detected", snippet_count),
+            explanation: "Multiple keywords rank well, but the snippets fail to address search intent. Systematically revise title and description.".into(),
         });
     }
 
-    if ranking_pushes > 3 {
+    if ranking_count > 3 {
         insights.push(Insight {
             severity: InsightSeverity::Info,
             category: InsightCategory::Search,
-            headline: format!("{} Keywords mit Ranking-Potenzial (Pos. 5-15)", ranking_pushes),
-            explanation: "Content-Ausbau und interne Verlinkung koennen diese Keywords auf die erste Seite bringen.".into(),
+            headline: format!("{} ranking issues (pos. 5-15)", ranking_count),
+            explanation: "Content expansion and internal linking can push these keywords to the first page.".into(),
+        });
+    }
+
+    if intent_count > 0 {
+        insights.push(Insight {
+            severity: InsightSeverity::Warning,
+            category: InsightCategory::Search,
+            headline: format!("{} pages with intent mismatch", intent_count),
+            explanation: "These pages rank, but low CTR and weak engagement suggest the content does not match the search intent.".into(),
         });
     }
 
@@ -147,10 +163,12 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         insights.push(Insight {
             severity: InsightSeverity::Positive,
             category: InsightCategory::Search,
-            headline: format!("Geschaetztes Potenzial: +{:.0} Klicks/Monat", total_estimated_clicks),
-            explanation: "Summe der geschaetzten zusaetzlichen Klicks ueber alle Opportunities.".into(),
+            headline: format!("Estimated potential: +{:.0} clicks/month", total_estimated_clicks),
+            explanation: "Sum of estimated additional clicks across all opportunities.".into(),
         });
     }
+
+    let action_plan = crate::opportunities::build_action_plan(&opportunities);
 
     Ok(OpportunitiesReport {
         property_name,
@@ -158,32 +176,36 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         opportunities,
         total_estimated_clicks,
         summary,
+        action_plan,
         insights,
     })
 }
 
 fn build_summary(opportunities: &[crate::domain::Opportunity], total: f64) -> String {
     if opportunities.is_empty() {
-        return "Keine signifikanten Opportunities gefunden.".into();
+        return "No significant opportunities found.".into();
     }
 
-    let ctr_count = opportunities.iter()
-        .filter(|o| o.opportunity_type == OpportunityType::CtrFix).count();
-    let rank_count = opportunities.iter()
-        .filter(|o| o.opportunity_type == OpportunityType::RankingPush).count();
-    let expand_count = opportunities.iter()
-        .filter(|o| o.opportunity_type == OpportunityType::ContentExpansion).count();
-    let link_count = opportunities.iter()
-        .filter(|o| o.opportunity_type == OpportunityType::InternalLinking).count();
+    let snippet_count = opportunities.iter()
+        .filter(|o| matches!(o.opportunity_type, OpportunityType::SnippetProblem | OpportunityType::CtrFix)).count();
+    let ranking_count = opportunities.iter()
+        .filter(|o| matches!(o.opportunity_type, OpportunityType::RankingProblem | OpportunityType::RankingPush)).count();
+    let expansion_count = opportunities.iter()
+        .filter(|o| matches!(o.opportunity_type, OpportunityType::ExpansionPotential | OpportunityType::ContentExpansion)).count();
+    let distribution_count = opportunities.iter()
+        .filter(|o| matches!(o.opportunity_type, OpportunityType::DistributionProblem | OpportunityType::InternalLinking)).count();
+    let intent_count = opportunities.iter()
+        .filter(|o| o.opportunity_type == OpportunityType::IntentMismatch).count();
 
     let mut parts = Vec::new();
-    if ctr_count > 0 { parts.push(format!("{} CTR-Fixes", ctr_count)); }
-    if rank_count > 0 { parts.push(format!("{} Ranking-Pushes", rank_count)); }
-    if expand_count > 0 { parts.push(format!("{} Content-Ausbauten", expand_count)); }
-    if link_count > 0 { parts.push(format!("{} Verlinkungen", link_count)); }
+    if snippet_count > 0 { parts.push(format!("{} snippet issues", snippet_count)); }
+    if ranking_count > 0 { parts.push(format!("{} ranking issues", ranking_count)); }
+    if intent_count > 0 { parts.push(format!("{} intent mismatches", intent_count)); }
+    if expansion_count > 0 { parts.push(format!("{} expansion potentials", expansion_count)); }
+    if distribution_count > 0 { parts.push(format!("{} distribution issues", distribution_count)); }
 
     format!(
-        "{} Opportunities gefunden ({}) — geschaetztes Potenzial: +{:.0} Klicks/Monat",
+        "{} opportunities found ({}) — estimated potential: +{:.0} clicks/month",
         opportunities.len(),
         parts.join(", "),
         total

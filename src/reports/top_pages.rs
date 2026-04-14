@@ -23,14 +23,21 @@ pub async fn build(
         .unwrap_or_else(|| property_id.clone());
 
     let date_range = DateRange::last_n_days(days);
-    let date_label = format!("letzte {} Tage", days);
+    let date_label = format!("last {} days", days);
 
     // ── GA4: sessions + engagement per page ──────────────────────────────────
     let req = ReportRequest {
         property_id: property_id.clone(),
         date_ranges: vec![date_range.clone()],
         dimensions: vec!["pagePath".into(), "sessionDefaultChannelGroup".into()],
-        metrics: vec!["sessions".into(), "engagementRate".into(), "averageSessionDuration".into()],
+        metrics: vec![
+            "sessions".into(),
+            "engagementRate".into(),
+            "averageSessionDuration".into(),
+            "bounceRate".into(),
+            "newUsers".into(),
+            "keyEvents".into(),
+        ],
         dimension_filter: None,
         limit: Some(500),
         order_by: Some(vec![serde_json::json!({
@@ -50,6 +57,9 @@ pub async fn build(
         let sessions: i64 = row.metric_values.first().and_then(|v| v.parse().ok()).unwrap_or(0);
         let eng: f64 = row.metric_values.get(1).and_then(|v| v.parse().ok()).unwrap_or(0.0);
         let dur: f64 = row.metric_values.get(2).and_then(|v| v.parse().ok()).unwrap_or(0.0);
+        let bounce: f64 = row.metric_values.get(3).and_then(|v| v.parse().ok()).unwrap_or(0.0);
+        let new_users: i64 = row.metric_values.get(4).and_then(|v| v.parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0);
+        let key_events: i64 = row.metric_values.get(5).and_then(|v| v.parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0);
 
         let entry = page_map.entry(path.clone()).or_insert_with(|| PageSummary {
             url: path.clone(),
@@ -57,12 +67,18 @@ pub async fn build(
             organic_sessions: 0,
             direct_sessions: 0,
             engagement_rate: 0.0,
+            bounce_rate: 0.0,
             avg_session_duration_secs: dur,
+            new_user_share: 0.0,
+            key_events: 0,
             search: SearchPerformanceBreakdown::default(),
         });
 
         entry.sessions += sessions;
-        entry.engagement_rate = eng; // last channel wins; good enough for top-pages
+        entry.engagement_rate = eng;
+        entry.bounce_rate = bounce;
+        entry.key_events += key_events;
+        entry.new_user_share += new_users as f64; // accumulate raw new users, convert to share below
         match channel {
             "Organic Search" => entry.organic_sessions += sessions,
             "Direct"         => entry.direct_sessions  += sessions,
@@ -83,6 +99,13 @@ pub async fn build(
 
         let sc_resp = query(access_token, sc_req).await?;
         helpers::merge_sc_into_page_map(&sc_resp.rows, &mut page_map);
+    }
+
+    // ── Convert raw newUsers count → share ─────────────────────────────────
+    for page in page_map.values_mut() {
+        if page.sessions > 0 {
+            page.new_user_share = page.new_user_share / page.sessions as f64;
+        }
     }
 
     // ── Sort and truncate ────────────────────────────────────────────────────

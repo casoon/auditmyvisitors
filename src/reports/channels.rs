@@ -13,7 +13,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         .clone()
         .unwrap_or_else(|| property_id.clone());
 
-    let date_label = format!("letzte {} Tage", days);
+    let date_label = format!("last {} days", days);
 
     let req = ReportRequest {
         property_id,
@@ -71,8 +71,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             insights.push(Insight {
                 severity: InsightSeverity::Info,
                 category: InsightCategory::Traffic,
-                headline: format!("Dominanter Kanal: {} ({:.0}%)", top.channel, top.share_pct),
-                explanation: "Ein einzelner Kanal macht ueber 60% des Traffics aus. Diversifizierung kann Risiken reduzieren.".into(),
+                headline: format!("Dominant channel: {} ({:.0}%)", top.channel, top.share_pct),
+                explanation: "A single channel accounts for over 60% of traffic. Diversification can reduce risk.".into(),
             });
         }
     }
@@ -86,9 +86,9 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         insights.push(Insight {
             severity: InsightSeverity::Warning,
             category: InsightCategory::Engagement,
-            headline: format!("{} Kanaele mit schwachem Engagement", low_eng.len()),
+            headline: format!("{} channels with weak engagement", low_eng.len()),
             explanation: format!(
-                "Unter 30% Engagement Rate: {}. Landing-Page-Qualitaet fuer diese Kanaele pruefen.",
+                "Below 30% engagement rate: {}. Check landing page quality for these channels.",
                 names.join(", ")
             ),
         });
@@ -103,8 +103,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         insights.push(Insight {
             severity: InsightSeverity::Positive,
             category: InsightCategory::Engagement,
-            headline: format!("{} Kanaele mit starkem Engagement", high_eng.len()),
-            explanation: format!("Ueber 70% Engagement Rate: {}.", names.join(", ")),
+            headline: format!("{} channels with strong engagement", high_eng.len()),
+            explanation: format!("Over 70% engagement rate: {}.", names.join(", ")),
         });
     }
 
@@ -115,8 +115,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             insights.push(Insight {
                 severity: InsightSeverity::Warning,
                 category: InsightCategory::Traffic,
-                headline: format!("Organischer Anteil nur {:.0}%", org.share_pct),
-                explanation: "Wenig organischer Traffic — SEO-Massnahmen koennen diesen Kanal staerken.".into(),
+                headline: format!("Organic share only {:.0}%", org.share_pct),
+                explanation: "Low organic traffic — SEO measures can strengthen this channel.".into(),
             });
         }
     }

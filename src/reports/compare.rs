@@ -204,13 +204,13 @@ fn generate_summary(delta: &ComparisonDelta) -> String {
 
     if delta.sessions_pct.abs() >= 5.0 {
         parts.push(format!(
-            "Sitzungen {:+.0}% ({:+})",
+            "Sessions {:+.0}% ({:+})",
             delta.sessions_pct, delta.sessions_abs
         ));
     }
     if delta.clicks_pct.abs() >= 5.0 {
         parts.push(format!(
-            "Klicks {:+.0}% ({:+.0})",
+            "Clicks {:+.0}% ({:+.0})",
             delta.clicks_pct, delta.clicks_abs
         ));
     }
@@ -219,7 +219,7 @@ fn generate_summary(delta: &ComparisonDelta) -> String {
     }
 
     if parts.is_empty() {
-        "Keine signifikanten Veränderungen festgestellt.".to_string()
+        "No significant changes detected.".to_string()
     } else {
         parts.join("  ·  ")
     }

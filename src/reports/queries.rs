@@ -3,6 +3,7 @@ use crate::domain::{Insight, InsightCategory, InsightSeverity, QueriesReport, Qu
 use crate::errors::Result;
 use crate::google::search_console::{query, SearchAnalyticsRequest};
 use crate::helpers;
+use crate::intent;
 use crate::opportunities::expected_ctr;
 
 pub async fn build(
@@ -19,7 +20,7 @@ pub async fn build(
         .clone()
         .unwrap_or_else(|| sc_url.to_string());
 
-    let date_label = format!("letzte {} Tage", days);
+    let date_label = format!("last {} days", days);
 
     let req = SearchAnalyticsRequest {
         site_url: sc_url.to_string(),
@@ -32,15 +33,22 @@ pub async fn build(
 
     let resp = query(access_token, req).await?;
 
+    let brand_terms = &config.report.brand_terms;
+
     let mut queries: Vec<QueryRow> = resp
         .rows
         .iter()
-        .map(|r| QueryRow {
-            query: r.keys.first().cloned().unwrap_or_default(),
-            clicks: r.clicks,
-            impressions: r.impressions,
-            ctr: r.ctr,
-            position: r.position,
+        .map(|r| {
+            let q = r.keys.first().cloned().unwrap_or_default();
+            let classified = intent::classify(&q, brand_terms);
+            QueryRow {
+                query: q,
+                clicks: r.clicks,
+                impressions: r.impressions,
+                ctr: r.ctr,
+                position: r.position,
+                intent: Some(classified),
+            }
         })
         .collect();
 
@@ -55,11 +63,16 @@ pub async fn build(
     queries.truncate(limit);
 
     // Brand / Non-Brand split
-    let brand_terms = &config.report.brand_terms;
     let brand_clicks: f64 = queries.iter()
         .filter(|q| helpers::is_brand_query(&q.query, brand_terms))
         .map(|q| q.clicks)
         .sum();
+
+    // Intent distribution
+    let intents: Vec<intent::Intent> = queries.iter()
+        .filter_map(|q| q.intent)
+        .collect();
+    let intent_dist = intent::distribution(&intents);
 
     // Aggregates
     let total_clicks: f64 = queries.iter().map(|q| q.clicks).sum();
@@ -85,9 +98,9 @@ pub async fn build(
         insights.push(Insight {
             severity: InsightSeverity::Warning,
             category: InsightCategory::Search,
-            headline: format!("{} Keywords mit CTR unter Erwartung", ctr_opps.len()),
+            headline: format!("{} keywords with CTR below expectation", ctr_opps.len()),
             explanation: format!(
-                "Diese Keywords ranken auf Seite 1, aber die CTR ist deutlich niedriger als erwartet. Bestes Potenzial: \"{}\"",
+                "These keywords rank on page 1, but CTR is significantly lower than expected. Best potential: \"{}\"",
                 ctr_opps.first().map(|q| q.query.as_str()).unwrap_or("-")
             ),
         });
@@ -101,8 +114,8 @@ pub async fn build(
         insights.push(Insight {
             severity: InsightSeverity::Info,
             category: InsightCategory::Search,
-            headline: format!("{} Keywords auf Seite 2 mit hohem Volumen", page2_queries.len()),
-            explanation: "Diese Keywords haben hohe Impressionen, ranken aber auf Seite 2. Content-Ausbau kann den Sprung auf Seite 1 ermoeglichen.".into(),
+            headline: format!("{} keywords on page 2 with high volume", page2_queries.len()),
+            explanation: "These keywords have high impressions but rank on page 2. Content expansion can enable the jump to page 1.".into(),
         });
     }
 
@@ -114,9 +127,9 @@ pub async fn build(
         insights.push(Insight {
             severity: InsightSeverity::Positive,
             category: InsightCategory::Search,
-            headline: format!("{} Stark-performende Keywords", top_performers.len()),
+            headline: format!("{} high-performing keywords", top_performers.len()),
             explanation: format!(
-                "Keywords mit >5% CTR und >20 Klicks. Staerkstes: \"{}\" ({:.1}% CTR)",
+                "Keywords with >5% CTR and >20 clicks. Strongest: \"{}\" ({:.1}% CTR)",
                 top_performers.first().map(|q| q.query.as_str()).unwrap_or("-"),
                 top_performers.first().map(|q| q.ctr * 100.0).unwrap_or(0.0)
             ),
@@ -130,17 +143,35 @@ pub async fn build(
             insights.push(Insight {
                 severity: InsightSeverity::Info,
                 category: InsightCategory::Search,
-                headline: format!("Brand-lastig: {:.0}% der Klicks sind Brand-Queries", brand_pct),
-                explanation: "Hoher Brand-Anteil kann ein Zeichen guter Markenbekanntheit sein, verdeckt aber organisches Wachstumspotenzial bei generischen Begriffen.".into(),
+                headline: format!("Brand-heavy: {:.0}% of clicks are brand queries", brand_pct),
+                explanation: "A high brand share can indicate good brand awareness but obscures organic growth potential for generic terms.".into(),
             });
         } else if brand_pct < 20.0 {
             insights.push(Insight {
                 severity: InsightSeverity::Positive,
                 category: InsightCategory::Search,
-                headline: format!("Starker Non-Brand-Traffic: {:.0}% der Klicks sind generisch", 100.0 - brand_pct),
-                explanation: "Der Grossteil des Traffics kommt ueber generische Keywords — gute organische Reichweite.".into(),
+                headline: format!("Strong non-brand traffic: {:.0}% of clicks are generic", 100.0 - brand_pct),
+                explanation: "The majority of traffic comes from generic keywords — good organic reach.".into(),
             });
         }
+    }
+
+    // Intent insights
+    if intent_dist.commercial_pct > 20.0 {
+        insights.push(Insight {
+            severity: InsightSeverity::Info,
+            category: InsightCategory::Search,
+            headline: format!("{:.0}% of queries have commercial intent", intent_dist.commercial_pct),
+            explanation: "A significant share of search queries indicates comparison or purchase intent. Check whether corresponding landing pages exist.".into(),
+        });
+    }
+    if intent_dist.transactional_pct > 10.0 {
+        insights.push(Insight {
+            severity: InsightSeverity::Positive,
+            category: InsightCategory::Search,
+            headline: format!("{:.0}% of queries are transactional", intent_dist.transactional_pct),
+            explanation: "Transactional search queries indicate conversion-ready traffic — high value for the website.".into(),
+        });
     }
 
     Ok(QueriesReport {
@@ -153,6 +184,7 @@ pub async fn build(
         avg_position,
         brand_clicks,
         non_brand_clicks,
+        intent_distribution: intent_dist,
         insights,
     })
 }

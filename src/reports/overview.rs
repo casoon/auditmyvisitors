@@ -44,7 +44,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         .clone()
         .unwrap_or_else(|| property_id.clone());
 
-    let date_label = format!("letzte {} Tage", days);
+    let date_label = format!("last {} days", days);
 
     // ── GA4: channel breakdown (current + previous period) ─────────────────
     let channel_req = ReportRequest {
@@ -246,6 +246,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
                 impressions: r.impressions,
                 ctr:         r.ctr,
                 position:    r.position,
+                intent:      None,
             })
             .collect();
 
@@ -294,7 +295,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
     }).collect();
 
     // ── Opportunities ─────────────────────────────────────────────────────────
-    let opportunities = opportunities_from_overview(&search.top_queries, &[], days);
+    let opportunities = opportunities_from_overview(&search.top_queries, &[], days, &config.report.brand_terms);
 
     let mut report = SiteOverviewReport {
         property_name,

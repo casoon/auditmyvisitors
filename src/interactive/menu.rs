@@ -3,27 +3,27 @@ use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::config::AppConfig;
-use crate::{auth, export, reports, snapshots, ui};
+use crate::{auth, export, narrative, reports, snapshots, ui};
 
 // ─── Time range ─────────────────────────────────────────────────────────────
 
 fn ask_days() -> anyhow::Result<u32> {
     let options = vec![
-        "Letzte 7 Tage",
-        "Letzte 28 Tage (Standard)",
-        "Letzte 90 Tage",
-        "Eigener Zeitraum…",
+        "Last 7 days",
+        "Last 28 days (default)",
+        "Last 90 days",
+        "Custom range…",
     ];
 
-    let choice = inquire::Select::new("Zeitraum waehlen:", options)
+    let choice = inquire::Select::new("Select time range:", options)
         .with_starting_cursor(1)
         .prompt()?;
 
     match choice {
-        "Letzte 7 Tage" => Ok(7),
-        "Letzte 90 Tage" => Ok(90),
-        "Eigener Zeitraum…" => {
-            let days: u32 = inquire::CustomType::new("Anzahl Tage:")
+        "Last 7 days" => Ok(7),
+        "Last 90 days" => Ok(90),
+        "Custom range…" => {
+            let days: u32 = inquire::CustomType::new("Number of days:")
                 .with_default(28)
                 .prompt()?;
             Ok(days)
@@ -34,12 +34,12 @@ fn ask_days() -> anyhow::Result<u32> {
 
 // ─── Main menu ──────────────────────────────────────────────────────────────
 
-const MENU_REPORT: &str = "Report starten";
-const MENU_PAGE: &str = "Seiten-Detail (einzelne URL)";
-const MENU_COMPARE: &str = "Vorher/Nachher-Vergleich";
-const MENU_EXPORT: &str = "Exportieren…";
-const MENU_PROPERTY: &str = "Property wechseln";
-const MENU_EXIT: &str = "Beenden";
+const MENU_REPORT: &str = "Run full report";
+const MENU_PAGE: &str = "Page detail (single URL)";
+const MENU_COMPARE: &str = "Before/after comparison";
+const MENU_EXPORT: &str = "Export…";
+const MENU_PROPERTY: &str = "Switch property";
+const MENU_EXIT: &str = "Exit";
 
 pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
     let days = ask_days()?;
@@ -48,9 +48,9 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
     // Run the full report immediately on first entry
     let mut token = auth::ensure_valid_token()
         .await
-        .context("Token konnte nicht erneuert werden")?;
+        .context("Failed to refresh token")?;
     run_full_report(config, &token, days).await.unwrap_or_else(|e| {
-        eprintln!("\n{} {}\n", "Fehler:".red().bold(), e);
+        eprintln!("\n{} {}\n", "Error:".red().bold(), e);
     });
 
     loop {
@@ -63,13 +63,13 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
             MENU_EXIT,
         ];
 
-        let choice = inquire::Select::new("Was moechtest du tun?", menu).prompt()?;
+        let choice = inquire::Select::new("What would you like to do?", menu).prompt()?;
 
         // Refresh token before each action
         if choice != MENU_EXIT {
             token = auth::ensure_valid_token()
                 .await
-                .context("Token konnte nicht erneuert werden")?;
+                .context("Failed to refresh token")?;
         }
 
         match choice {
@@ -83,13 +83,13 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
                 Ok(())
             }
             MENU_EXIT => {
-                println!("Bis bald!");
+                println!("Goodbye!");
                 break;
             }
             _ => Ok(()),
         }
         .unwrap_or_else(|e| {
-            eprintln!("\n{} {}\n", "Fehler:".red().bold(), e);
+            eprintln!("\n{} {}\n", "Error:".red().bold(), e);
         });
     }
 
@@ -100,7 +100,7 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
 
 async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
     // 1. Overview
-    let pb = spinner("Uebersicht wird geladen…");
+    let pb = spinner("Loading overview…");
     let overview = reports::overview::build(config, token, days).await?;
     pb.finish_and_clear();
     ui::print_overview(&overview);
@@ -125,72 +125,102 @@ async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::
     };
     let _ = snapshots::save(&overview.property_name, &snap);
 
-    // 2. Top Pages
-    let pb = spinner("Top-Seiten werden geladen…");
+    // 2. Growth Drivers
+    let pb = spinner("Analyzing growth drivers…");
+    let growth = reports::growth::build(config, token, days).await?;
+    pb.finish_and_clear();
+    ui::print_growth(&growth);
+
+    // 3. Weekly Trends
+    let pb = spinner("Loading weekly trends…");
+    let trends = reports::trends::build(config, token, days).await?;
+    pb.finish_and_clear();
+    ui::print_trends(&trends);
+
+    // 4. Top Pages
+    let pb = spinner("Loading top pages…");
     let top_pages = reports::top_pages::build(config, token, days, 20, "sessions").await?;
     pb.finish_and_clear();
     ui::print_top_pages(&top_pages);
 
-    // 3. Channels
-    let pb = spinner("Kanal-Analyse wird geladen…");
+    // 5. Channels
+    let pb = spinner("Loading channel analysis…");
     let channels = reports::channels::build(config, token, days).await?;
     pb.finish_and_clear();
     ui::print_channels(&channels);
 
-    // 4. Queries
-    let pb = spinner("Suchanfragen werden analysiert…");
+    // 6. Queries
+    let pb = spinner("Analyzing search queries…");
     let queries = reports::queries::build(config, token, days, 30, "clicks").await?;
     pb.finish_and_clear();
     ui::print_queries(&queries);
 
-    // 5. Opportunities
-    let pb = spinner("Opportunities werden analysiert…");
+    // 7. Opportunities
+    let pb = spinner("Analyzing opportunities…");
     let opportunities = reports::opportunities::build(config, token, days).await?;
     pb.finish_and_clear();
     ui::print_opportunities(&opportunities);
 
-    // 6. AI Traffic
-    let pb = spinner("AI-Traffic wird analysiert…");
+    // 8. Topic Clusters
+    let pb = spinner("Analyzing topic clusters…");
+    let clusters = reports::clusters::build(config, token, days).await?;
+    pb.finish_and_clear();
+    ui::print_clusters(&clusters);
+
+    // 9. AI Traffic
+    let pb = spinner("Analyzing AI traffic…");
     let ai = reports::ai_traffic::build(config, token, days).await?;
     pb.finish_and_clear();
     ui::print_ai_traffic(&ai);
 
-    // 7. Devices
-    let pb = spinner("Geraete-Analyse wird geladen…");
+    // 10. Devices
+    let pb = spinner("Loading device analysis…");
     let devices = reports::devices::build(config, token, days).await?;
     pb.finish_and_clear();
     ui::print_devices(&devices);
 
-    // 8. Countries
-    let pb = spinner("Laender-Analyse wird geladen…");
+    // 11. Countries
+    let pb = spinner("Loading country analysis…");
     let countries = reports::countries::build(config, token, days, 20).await?;
     pb.finish_and_clear();
     ui::print_countries(&countries);
 
-    // 9. Content Decay
-    let pb = spinner("Content Decay wird analysiert…");
+    // 12. Content Decay
+    let pb = spinner("Analyzing content decay…");
     let decay = reports::decay::build(config, token, days).await?;
     pb.finish_and_clear();
     ui::print_decay(&decay);
 
+    // Management Summary (Narrative Engine)
+    let narrative_input = narrative::NarrativeInput {
+        overview: Some(&overview),
+        top_pages: Some(&top_pages),
+        opportunities: Some(&opportunities),
+        growth: Some(&growth),
+        ai_traffic: Some(&ai),
+        clusters: Some(&clusters),
+    };
+    let summary = narrative::management_summary(&narrative_input);
+    ui::print_management_summary(&summary);
+
     println!(
         "{}\n",
-        "── Report abgeschlossen ──".bold().dimmed()
+        "── Report complete ──".bold().dimmed()
     );
 
     // Offer export
     let export_opts = vec![
-        "Weiter (kein Export)",
-        "Als PDF speichern",
-        "Als JSON speichern",
+        "Continue (no export)",
+        "Save as PDF",
+        "Save as JSON",
     ];
-    let export_choice = inquire::Select::new("Report exportieren?", export_opts).prompt()?;
+    let export_choice = inquire::Select::new("Export report?", export_opts).prompt()?;
 
     match export_choice {
-        "Als PDF speichern" => {
+        "Save as PDF" => {
             export_pdf(config, &overview, &top_pages).await?;
         }
-        "Als JSON speichern" => {
+        "Save as JSON" => {
             export_json(&overview, &top_pages)?;
         }
         _ => {}
@@ -202,11 +232,11 @@ async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::
 // ─── Page Detail ────────────────────────────────────────────────────────────
 
 async fn run_page_detail(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
-    let url: String = inquire::Text::new("URL oder Pfad der Seite:")
-        .with_placeholder("/blog/mein-artikel")
+    let url: String = inquire::Text::new("Page URL or path:")
+        .with_placeholder("/blog/my-article")
         .prompt()?;
 
-    let pb = spinner(&format!("Detail fuer {} wird geladen…", url));
+    let pb = spinner(&format!("Loading details for {}…", url));
     let report = reports::page_detail::build(config, token, &url, days).await?;
     pb.finish_and_clear();
     ui::print_page_detail(&report);
@@ -217,22 +247,22 @@ async fn run_page_detail(config: &AppConfig, token: &str, days: u32) -> anyhow::
 // ─── Compare ────────────────────────────────────────────────────────────────
 
 async fn run_compare(config: &AppConfig, token: &str) -> anyhow::Result<()> {
-    let since: String = inquire::Text::new("Stichtag (YYYY-MM-DD):")
+    let since: String = inquire::Text::new("Change date (YYYY-MM-DD):")
         .with_placeholder("2026-04-01")
         .prompt()?;
-    let url: String = inquire::Text::new("URL (leer = gesamte Website):")
+    let url: String = inquire::Text::new("URL (empty = entire site):")
         .with_default("")
         .prompt()?;
     let url_opt = if url.is_empty() { None } else { Some(url.as_str()) };
 
-    let before: u32 = inquire::CustomType::new("Tage vor Stichtag:")
+    let before: u32 = inquire::CustomType::new("Days before change date:")
         .with_default(30)
         .prompt()?;
-    let after: u32 = inquire::CustomType::new("Tage nach Stichtag:")
+    let after: u32 = inquire::CustomType::new("Days after change date:")
         .with_default(30)
         .prompt()?;
 
-    let pb = spinner("Vergleichsdaten werden geladen…");
+    let pb = spinner("Loading comparison data…");
     let report =
         reports::compare::build(config, token, url_opt, before, after, &since).await?;
     pb.finish_and_clear();
@@ -243,18 +273,18 @@ async fn run_compare(config: &AppConfig, token: &str) -> anyhow::Result<()> {
 
 // ─── Export ─────────────────────────────────────────────────────────────────
 
-const EXP_PDF: &str = "PDF (Vollstaendiger Report)";
-const EXP_JSON: &str = "JSON (Uebersicht + Top-Seiten)";
-const EXP_CSV: &str = "CSV (Report waehlen)";
-const EXP_BACK: &str = "<- Zurueck";
+const EXP_PDF: &str = "PDF (full report)";
+const EXP_JSON: &str = "JSON (overview + top pages)";
+const EXP_CSV: &str = "CSV (choose report)";
+const EXP_BACK: &str = "<- Back";
 
 async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
     let options = vec![EXP_PDF, EXP_JSON, EXP_CSV, EXP_BACK];
-    let choice = inquire::Select::new("Export-Format:", options).prompt()?;
+    let choice = inquire::Select::new("Export format:", options).prompt()?;
 
     match choice {
         EXP_PDF => {
-            let pb = spinner("Daten werden geladen…");
+            let pb = spinner("Loading data…");
             let (overview, top_pages) = tokio::join!(
                 reports::overview::build(config, token, days),
                 reports::top_pages::build(config, token, days, 15, "sessions"),
@@ -266,7 +296,7 @@ async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Resul
             export_pdf(config, &overview, &top_pages).await?;
         }
         EXP_JSON => {
-            let pb = spinner("Daten werden geladen…");
+            let pb = spinner("Loading data…");
             let (overview, top_pages) = tokio::join!(
                 reports::overview::build(config, token, days),
                 reports::top_pages::build(config, token, days, 50, "sessions"),
@@ -279,36 +309,37 @@ async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Resul
         }
         EXP_CSV => {
             let csv_options = vec![
-                "Top-Seiten",
-                "Suchanfragen",
+                "Top Pages",
+                "Search Queries",
                 "Opportunities",
-                "Kanaele",
-                "Geraete",
-                "Laender",
+                "Topic Clusters",
+                "Channels",
+                "Devices",
+                "Countries",
                 "Content Decay",
             ];
-            let csv_choice = inquire::Select::new("Welchen Report als CSV?", csv_options).prompt()?;
+            let csv_choice = inquire::Select::new("Which report as CSV?", csv_options).prompt()?;
 
             let default_name = format!(
                 "{}-{}.csv",
                 csv_choice.to_lowercase().replace(' ', "-"),
                 chrono::Utc::now().format("%Y-%m-%d")
             );
-            let path: String = inquire::Text::new("Speicherpfad:")
+            let path: String = inquire::Text::new("Save path:")
                 .with_default(&default_name)
                 .prompt()?;
 
-            let pb = spinner("Daten werden geladen…");
+            let pb = spinner("Loading data…");
 
             let csv_bytes: Vec<u8> = match csv_choice {
-                "Top-Seiten" => {
+                "Top Pages" => {
                     let r = reports::top_pages::build(config, token, days, 50, "sessions").await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_top_pages(&r, &mut buf)?;
                     buf
                 }
-                "Suchanfragen" => {
+                "Search Queries" => {
                     let r = reports::queries::build(config, token, days, 100, "clicks").await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
@@ -322,21 +353,28 @@ async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Resul
                     export::csv::write_opportunities(&r, &mut buf)?;
                     buf
                 }
-                "Kanaele" => {
+                "Topic Clusters" => {
+                    let r = reports::clusters::build(config, token, days).await?;
+                    pb.finish_and_clear();
+                    let mut buf = Vec::new();
+                    export::csv::write_clusters(&r, &mut buf)?;
+                    buf
+                }
+                "Channels" => {
                     let r = reports::channels::build(config, token, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_channels(&r, &mut buf)?;
                     buf
                 }
-                "Geraete" => {
+                "Devices" => {
                     let r = reports::devices::build(config, token, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_devices(&r, &mut buf)?;
                     buf
                 }
-                "Laender" => {
+                "Countries" => {
                     let r = reports::countries::build(config, token, days, 50).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
@@ -360,7 +398,7 @@ async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Resul
                 std::fs::create_dir_all(parent)?;
             }
             std::fs::write(&path, &csv_bytes)?;
-            println!("{} CSV gespeichert: {}", "✓".green().bold(), path.cyan());
+            println!("{} CSV saved: {}", "✓".green().bold(), path.cyan());
         }
         _ => {} // EXP_BACK
     }
@@ -389,19 +427,19 @@ async fn export_pdf(
         chrono::Utc::now().format("%Y-%m-%d")
     );
 
-    let path: String = inquire::Text::new("Speicherpfad:")
+    let path: String = inquire::Text::new("Save path:")
         .with_default(&default_path)
         .prompt()?;
 
     if let Some(parent) = std::path::Path::new(&path).parent() {
         std::fs::create_dir_all(parent)
-            .with_context(|| format!("Verzeichnis {} kann nicht erstellt werden", parent.display()))?;
+            .with_context(|| format!("Cannot create directory {}", parent.display()))?;
     }
 
     let vm = export::builder::build_view_model(overview, top_pages);
-    export::pdf::generate(&vm, &path).context("PDF-Export fehlgeschlagen")?;
+    export::pdf::generate(&vm, &path).context("PDF export failed")?;
 
-    println!("{} PDF gespeichert: {}", "✓".green().bold(), path.cyan());
+    println!("{} PDF saved: {}", "✓".green().bold(), path.cyan());
     Ok(())
 }
 
@@ -420,7 +458,7 @@ fn export_json(
         chrono::Utc::now().format("%Y-%m-%d")
     );
 
-    let path: String = inquire::Text::new("Speicherpfad:")
+    let path: String = inquire::Text::new("Save path:")
         .with_default(&default_path)
         .prompt()?;
 
@@ -431,7 +469,7 @@ fn export_json(
     let json = serde_json::to_string_pretty(&JsonExport { overview, top_pages })?;
     std::fs::write(&path, &json)?;
 
-    println!("{} JSON gespeichert: {}", "✓".green().bold(), path.cyan());
+    println!("{} JSON saved: {}", "✓".green().bold(), path.cyan());
     Ok(())
 }
 

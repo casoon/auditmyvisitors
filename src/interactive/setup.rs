@@ -13,23 +13,23 @@ pub async fn ensure_ready(config: &mut AppConfig) -> anyhow::Result<String> {
 
     match status {
         auth::AuthStatus::NotLoggedIn => {
-            println!("Zuerst verbinden wir dein Google-Konto.\n");
+            println!("First, let's connect your Google account.\n");
             auth::run_oauth_login().await?;
-            println!("\n{} Erfolgreich verbunden.\n", "✓".green().bold());
+            println!("\n{} Successfully connected.\n", "✓".green().bold());
         }
         auth::AuthStatus::TokenExpired => {
-            println!("Session wird erneuert…");
+            println!("Refreshing session…");
             auth::ensure_valid_token().await?;
-            println!("{} Session erneuert.\n", "✓".green().bold());
+            println!("{} Session refreshed.\n", "✓".green().bold());
         }
         auth::AuthStatus::LoggedIn => {
-            println!("{} Google-Konto verbunden.\n", "✓".green().bold());
+            println!("{} Google account connected.\n", "✓".green().bold());
         }
     }
 
     let token = auth::ensure_valid_token()
         .await
-        .context("Token konnte nicht geladen werden")?;
+        .context("Failed to load token")?;
 
     // ── Step 2: Property selection ──────────────────────────────────────────
     if config.properties.ga4_property_id.is_some() {
@@ -37,18 +37,18 @@ pub async fn ensure_ready(config: &mut AppConfig) -> anyhow::Result<String> {
             .properties
             .ga4_property_name
             .as_deref()
-            .unwrap_or("(unbenannt)");
+            .unwrap_or("(unnamed)");
         let sc = config
             .properties
             .search_console_url
             .as_deref()
-            .unwrap_or("nicht gesetzt");
+            .unwrap_or("not set");
 
-        println!("Aktuelle Property:");
+        println!("Current property:");
         println!("  GA4:             {}", name.cyan());
         println!("  Search Console:  {}\n", sc.cyan());
 
-        let keep = inquire::Confirm::new("Mit dieser Property weiterarbeiten?")
+        let keep = inquire::Confirm::new("Continue with this property?")
             .with_default(true)
             .prompt()?;
 
@@ -56,7 +56,7 @@ pub async fn ensure_ready(config: &mut AppConfig) -> anyhow::Result<String> {
             select_properties(config, &token).await?;
         }
     } else {
-        println!("Noch keine Property ausgewaehlt.\n");
+        println!("No property selected yet.\n");
         select_properties(config, &token).await?;
     }
 
@@ -74,7 +74,7 @@ async fn select_properties(config: &mut AppConfig, token: &str) -> anyhow::Resul
     let sc_sites = sc_sites?;
 
     if ga4_props.is_empty() {
-        anyhow::bail!("Keine GA4 Properties gefunden. Pruefe die Berechtigungen im Google-Konto.");
+        anyhow::bail!("No GA4 properties found. Check the permissions on your Google account.");
     }
 
     // GA4 selection
@@ -83,9 +83,9 @@ async fn select_properties(config: &mut AppConfig, token: &str) -> anyhow::Resul
         .map(|p| format!("{} — {}", p.display_name, p.name))
         .collect();
 
-    let ga4_choice = inquire::Select::new("GA4 Property auswaehlen:", ga4_labels)
+    let ga4_choice = inquire::Select::new("Select GA4 property:", ga4_labels)
         .prompt()
-        .context("Auswahl abgebrochen")?;
+        .context("Selection cancelled")?;
 
     let selected_ga4 = ga4_props
         .iter()
@@ -96,22 +96,22 @@ async fn select_properties(config: &mut AppConfig, token: &str) -> anyhow::Resul
 
     // Search Console selection
     if !sc_sites.is_empty() {
-        let mut sc_options = vec!["(ueberspringen)".to_string()];
+        let mut sc_options = vec!["(skip)".to_string()];
         sc_options.extend(sc_sites);
 
-        let sc_choice = inquire::Select::new("Search Console Property auswaehlen:", sc_options)
+        let sc_choice = inquire::Select::new("Select Search Console property:", sc_options)
             .prompt()
-            .context("Auswahl abgebrochen")?;
+            .context("Selection cancelled")?;
 
-        if sc_choice != "(ueberspringen)" {
+        if sc_choice != "(skip)" {
             config.set_search_console_url(sc_choice);
         }
     }
 
-    config.save().context("Konfiguration konnte nicht gespeichert werden")?;
+    config.save().context("Failed to save configuration")?;
 
     println!(
-        "\n{} Property gespeichert: {}",
+        "\n{} Property saved: {}",
         "✓".green().bold(),
         selected_ga4.display_name.cyan()
     );

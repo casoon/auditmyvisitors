@@ -1,5 +1,6 @@
 mod auth;
 mod cli;
+mod clusters;
 mod config;
 mod domain;
 mod errors;
@@ -7,7 +8,9 @@ mod export;
 mod google;
 mod helpers;
 mod insights;
+mod intent;
 mod interactive;
+mod narrative;
 mod opportunities;
 mod reports;
 mod snapshots;
@@ -25,7 +28,7 @@ use config::AppConfig;
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
-        eprintln!("{} {}", "Fehler:".red().bold(), e);
+        eprintln!("{} {}", "Error:".red().bold(), e);
         std::process::exit(1);
     }
 }
@@ -59,8 +62,8 @@ async fn handle_auth(action: AuthAction, _config: &AppConfig) -> anyhow::Result<
     match action {
         AuthAction::Login => {
             auth::run_oauth_login().await?;
-            println!("\n{} Du bist jetzt eingeloggt.", "✓".green().bold());
-            println!("Nächster Schritt: {}", "auditmyvisitors properties select".cyan());
+            println!("\n{} You are now logged in.", "✓".green().bold());
+            println!("Next step: {}", "auditmyvisitors properties select".cyan());
         }
         AuthAction::Status => {
             let status = auth::auth_status()?;
@@ -68,7 +71,7 @@ async fn handle_auth(action: AuthAction, _config: &AppConfig) -> anyhow::Result<
         }
         AuthAction::Logout => {
             storage::delete_tokens()?;
-            println!("{} Ausgeloggt — Tokens wurden gelöscht.", "✓".green().bold());
+            println!("{} Logged out — tokens deleted.", "✓".green().bold());
         }
     }
     Ok(())
@@ -78,16 +81,16 @@ async fn handle_auth(action: AuthAction, _config: &AppConfig) -> anyhow::Result<
 
 async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> anyhow::Result<()> {
     let token = auth::ensure_valid_token().await
-        .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
+        .context("Please log in first: auditmyvisitors auth login")?;
 
     match action {
         PropertiesAction::List => {
-            let pb = spinner("Google Analytics Properties werden geladen…");
+            let pb = spinner("Loading Google Analytics properties…");
             let properties = google::analytics_admin::list_properties(&token).await?;
             pb.finish_and_clear();
 
             if properties.is_empty() {
-                println!("Keine GA4 Properties gefunden.");
+                println!("No GA4 properties found.");
                 return Ok(());
             }
 
@@ -96,7 +99,7 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
                 println!("  {} — {}", prop.name.cyan(), prop.display_name);
             }
 
-            let pb2 = spinner("Search Console Properties werden geladen…");
+            let pb2 = spinner("Loading Search Console properties…");
             let sites = google::search_console::list_sites(&token).await?;
             pb2.finish_and_clear();
 
@@ -109,7 +112,7 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
         }
 
         PropertiesAction::Select => {
-            let pb = spinner("Verfügbare Properties werden geladen…");
+            let pb = spinner("Loading available properties…");
             let (ga4_props, sc_sites) = tokio::join!(
                 google::analytics_admin::list_properties(&token),
                 google::search_console::list_sites(&token),
@@ -120,7 +123,7 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
             let sc_sites = sc_sites?;
 
             if ga4_props.is_empty() {
-                println!("Keine GA4 Properties gefunden.");
+                println!("No GA4 properties found.");
                 return Ok(());
             }
 
@@ -130,9 +133,9 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
                 .map(|p| format!("{} — {}", p.display_name, p.name))
                 .collect();
 
-            let ga4_idx = inquire::Select::new("GA4 Property auswählen:", ga4_labels.clone())
+            let ga4_idx = inquire::Select::new("Select GA4 property:", ga4_labels.clone())
                 .prompt()
-                .context("Auswahl abgebrochen")?;
+                .context("Selection cancelled")?;
 
             let selected_ga4 = ga4_props
                 .iter()
@@ -143,20 +146,20 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
 
             // Search Console selection (optional)
             if !sc_sites.is_empty() {
-                let mut sc_options = vec!["(überspringen)".to_string()];
+                let mut sc_options = vec!["(skip)".to_string()];
                 sc_options.extend(sc_sites.clone());
 
-                let sc_choice = inquire::Select::new("Search Console Property auswählen:", sc_options)
+                let sc_choice = inquire::Select::new("Select Search Console property:", sc_options)
                     .prompt()
-                    .context("Auswahl abgebrochen")?;
+                    .context("Selection cancelled")?;
 
-                if sc_choice != "(überspringen)" {
+                if sc_choice != "(skip)" {
                     config.set_search_console_url(sc_choice);
                 }
             }
 
-            config.save().context("Konfiguration konnte nicht gespeichert werden")?;
-            println!("\n{} Property-Auswahl gespeichert.", "✓".green().bold());
+            config.save().context("Could not save configuration")?;
+            println!("\n{} Property selection saved.", "✓".green().bold());
             println!("GA4:             {}", selected_ga4.display_name.cyan());
             if let Some(sc) = &config.properties.search_console_url {
                 println!("Search Console:  {}", sc.cyan());
@@ -170,12 +173,12 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
 
 async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Result<()> {
     let token = auth::ensure_valid_token().await
-        .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
+        .context("Please log in first: auditmyvisitors auth login")?;
 
     match action {
         ReportAction::Overview { days } => {
             let days = days.unwrap_or(config.report.default_days);
-            let pb = spinner(&format!("Overview für letzte {} Tage wird geladen…", days));
+            let pb = spinner(&format!("Loading overview for last {} days…", days));
             let report = reports::overview::build(config, &token, days).await?;
             pb.finish_and_clear();
             ui::print_overview(&report);
@@ -199,14 +202,14 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
                 avg_position: report.search.average_position,
             };
             if let Err(e) = snapshots::save(&report.property_name, &snap) {
-                tracing::warn!("Snapshot konnte nicht gespeichert werden: {}", e);
+                tracing::warn!("Could not save snapshot: {}", e);
             }
         }
 
         ReportAction::TopPages { days, limit, sort_by } => {
             let days = days.unwrap_or(config.report.default_days);
             let limit = limit.unwrap_or(config.report.top_pages_limit);
-            let pb = spinner(&format!("Top {} Seiten für letzte {} Tage werden geladen…", limit, days));
+            let pb = spinner(&format!("Loading top {} pages for last {} days…", limit, days));
             let report = reports::top_pages::build(config, &token, days, limit, &sort_by).await?;
             pb.finish_and_clear();
             ui::print_top_pages(&report);
@@ -214,14 +217,14 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
 
         ReportAction::Page { url, days } => {
             let days = days.unwrap_or(config.report.default_days);
-            let pb = spinner(&format!("Seiten-Detail für {} wird geladen…", url));
+            let pb = spinner(&format!("Loading page detail for {}…", url));
             let report = reports::page_detail::build(config, &token, &url, days).await?;
             pb.finish_and_clear();
             ui::print_page_detail(&report);
         }
 
         ReportAction::Compare { url, before, after, since } => {
-            let pb = spinner("Vergleichsdaten werden geladen…");
+            let pb = spinner("Loading comparison data…");
             let report = reports::compare::build(
                 config, &token, url.as_deref(), before, after, &since,
             ).await?;
@@ -231,7 +234,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
 
         ReportAction::Opportunities { days } => {
             let days = days.unwrap_or(config.report.default_days);
-            let pb = spinner(&format!("Opportunities für letzte {} Tage werden analysiert…", days));
+            let pb = spinner(&format!("Analyzing opportunities for last {} days…", days));
             let report = reports::opportunities::build(config, &token, days).await?;
             pb.finish_and_clear();
             ui::print_opportunities(&report);
@@ -240,7 +243,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::Queries { days, limit, sort_by } => {
             let days = days.unwrap_or(config.report.default_days);
             let limit = limit.unwrap_or(30);
-            let pb = spinner(&format!("Query-Analyse für letzte {} Tage wird geladen…", days));
+            let pb = spinner(&format!("Loading query analysis for last {} days…", days));
             let report = reports::queries::build(config, &token, days, limit, &sort_by).await?;
             pb.finish_and_clear();
             ui::print_queries(&report);
@@ -248,7 +251,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
 
         ReportAction::AiTraffic { days } => {
             let days = days.unwrap_or(config.report.default_days);
-            let pb = spinner(&format!("AI-Traffic für letzte {} Tage wird analysiert…", days));
+            let pb = spinner(&format!("Analyzing AI traffic for last {} days…", days));
             let report = reports::ai_traffic::build(config, &token, days).await?;
             pb.finish_and_clear();
             ui::print_ai_traffic(&report);
@@ -256,7 +259,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
 
         ReportAction::Channels { days } => {
             let days = days.unwrap_or(config.report.default_days);
-            let pb = spinner(&format!("Kanal-Analyse für letzte {} Tage wird geladen…", days));
+            let pb = spinner(&format!("Loading channel analysis for last {} days…", days));
             let report = reports::channels::build(config, &token, days).await?;
             pb.finish_and_clear();
             ui::print_channels(&report);
@@ -264,7 +267,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
 
         ReportAction::Decay { days } => {
             let days = days.unwrap_or(config.report.default_days);
-            let pb = spinner(&format!("Content-Decay für letzte {} Tage wird analysiert…", days));
+            let pb = spinner(&format!("Analyzing content decay for last {} days…", days));
             let report = reports::decay::build(config, &token, days).await?;
             pb.finish_and_clear();
             ui::print_decay(&report);
@@ -272,7 +275,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
 
         ReportAction::Devices { days } => {
             let days = days.unwrap_or(config.report.default_days);
-            let pb = spinner(&format!("Geräte-Analyse für letzte {} Tage wird geladen…", days));
+            let pb = spinner(&format!("Loading device analysis for last {} days…", days));
             let report = reports::devices::build(config, &token, days).await?;
             pb.finish_and_clear();
             ui::print_devices(&report);
@@ -281,7 +284,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::Countries { days, limit } => {
             let days = days.unwrap_or(config.report.default_days);
             let limit = limit.unwrap_or(20);
-            let pb = spinner(&format!("Länder-Analyse für letzte {} Tage wird geladen…", days));
+            let pb = spinner(&format!("Loading country analysis for last {} days…", days));
             let report = reports::countries::build(config, &token, days, limit).await?;
             pb.finish_and_clear();
             ui::print_countries(&report);
@@ -302,10 +305,10 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
     match action {
         ExportAction::Json { days, output } => {
             let token = auth::ensure_valid_token().await
-                .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
+                .context("Please log in first: auditmyvisitors auth login")?;
 
             let days = days.unwrap_or(config.report.default_days);
-            let pb = spinner(&format!("Daten für letzte {} Tage werden geladen…", days));
+            let pb = spinner(&format!("Loading data for last {} days…", days));
 
             let (overview, top_pages) = tokio::join!(
                 reports::overview::build(config, &token, days),
@@ -323,7 +326,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                     std::fs::create_dir_all(parent)?;
                 }
                 std::fs::write(&path, &json)?;
-                println!("{} JSON gespeichert: {}", "✓".green().bold(), path.cyan());
+                println!("{} JSON saved: {}", "✓".green().bold(), path.cyan());
             } else {
                 println!("{json}");
             }
@@ -331,10 +334,10 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
 
         ExportAction::Csv { report: report_type, days, limit, output } => {
             let token = auth::ensure_valid_token().await
-                .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
+                .context("Please log in first: auditmyvisitors auth login")?;
 
             let days = days.unwrap_or(config.report.default_days);
-            let pb = spinner(&format!("Daten für letzte {} Tage werden geladen…", days));
+            let pb = spinner(&format!("Loading data for last {} days…", days));
 
             let csv_bytes: Vec<u8> = match report_type.as_str() {
                 "top-pages" => {
@@ -392,7 +395,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                 other => {
                     pb.finish_and_clear();
                     anyhow::bail!(
-                        "Unbekannter Report-Typ: '{}'. Verfuegbar: top-pages, queries, opportunities, channels, devices, countries, decay",
+                        "Unknown report type: '{}'. Available: top-pages, queries, opportunities, channels, devices, countries, decay",
                         other
                     );
                 }
@@ -403,7 +406,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                     std::fs::create_dir_all(parent)?;
                 }
                 std::fs::write(&path, &csv_bytes)?;
-                println!("{} CSV gespeichert: {}", "✓".green().bold(), path.cyan());
+                println!("{} CSV saved: {}", "✓".green().bold(), path.cyan());
             } else {
                 use std::io::Write;
                 std::io::stdout().write_all(&csv_bytes)?;
@@ -412,11 +415,11 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
 
         ExportAction::Pdf { days, output } => {
             let token = auth::ensure_valid_token().await
-                .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
+                .context("Please log in first: auditmyvisitors auth login")?;
 
             let days = days.unwrap_or(config.report.default_days);
 
-            let pb = spinner(&format!("Daten für letzte {} Tage werden geladen…", days));
+            let pb = spinner(&format!("Loading data for last {} days…", days));
 
             let (overview, top_pages) = tokio::join!(
                 reports::overview::build(config, &token, days),
@@ -425,7 +428,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
             let overview = overview?;
             let top_pages = top_pages?;
 
-            pb.set_message("PDF wird erstellt…");
+            pb.set_message("Creating PDF…");
 
             let property_slug = config
                 .properties
@@ -443,14 +446,14 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
             // Ensure output dir exists
             if let Some(parent) = std::path::Path::new(&path).parent() {
                 std::fs::create_dir_all(parent)
-                    .with_context(|| format!("Verzeichnis {} kann nicht erstellt werden", parent.display()))?;
+                    .with_context(|| format!("Cannot create directory {}", parent.display()))?;
             }
 
             let vm = export::builder::build_view_model(&overview, &top_pages);
-            export::pdf::generate(&vm, &path).context("PDF-Export fehlgeschlagen")?;
+            export::pdf::generate(&vm, &path).context("PDF export failed")?;
 
             pb.finish_and_clear();
-            println!("{} PDF gespeichert: {}", "✓".green().bold(), path.cyan());
+            println!("{} PDF saved: {}", "✓".green().bold(), path.cyan());
         }
     }
     Ok(())
@@ -469,7 +472,7 @@ fn handle_snapshot(action: SnapshotAction, config: &AppConfig) -> anyhow::Result
 
             let snaps = snapshots::list(property_name)?;
             if snaps.is_empty() {
-                println!("Keine Snapshots vorhanden. Fuehre zuerst {} aus.", "report overview".cyan());
+                println!("No snapshots available. Run {} first.", "report overview".cyan());
                 return Ok(());
             }
 
@@ -478,12 +481,12 @@ fn handle_snapshot(action: SnapshotAction, config: &AppConfig) -> anyhow::Result
 
             let mut table = comfy_table::Table::new();
             table.set_header(vec![
-                comfy_table::Cell::new("Datum"),
-                comfy_table::Cell::new("Tage"),
+                comfy_table::Cell::new("Date"),
+                comfy_table::Cell::new("Days"),
                 comfy_table::Cell::new("Sessions"),
-                comfy_table::Cell::new("Organisch"),
-                comfy_table::Cell::new("Klicks"),
-                comfy_table::Cell::new("Impressionen"),
+                comfy_table::Cell::new("Organic"),
+                comfy_table::Cell::new("Clicks"),
+                comfy_table::Cell::new("Impressions"),
                 comfy_table::Cell::new("CTR"),
                 comfy_table::Cell::new("Position"),
             ]);

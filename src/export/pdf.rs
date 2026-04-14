@@ -26,7 +26,7 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
         .add_component(Label::new("AUDIT MY VISITORS").with_size("10pt").bold().with_color("#0f766e"))
         .add_component(Label::new(format!("Traffic Audit - {}", vm.property_name)).with_size("26pt").bold())
         .add_component(
-            Label::new(format!("{} - Erstellt am {}", vm.date_range, vm.created_at))
+            Label::new(format!("{} - Created {}", vm.date_range, vm.created_at))
                 .with_size("11pt").with_color("#475569"),
         );
 
@@ -41,7 +41,7 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
 
     let mut cover_grid = Grid::new(2);
     cover_grid = add_metric(cover_grid, "Sessions",       &sessions_label,       "#0f766e");
-    cover_grid = add_metric(cover_grid, "Organisch",      &vm.exec_organic_pct,  "#16a34a");
+    cover_grid = add_metric(cover_grid, "Organic",         &vm.exec_organic_pct,  "#16a34a");
     cover_grid = add_metric(cover_grid, "Search Clicks",  &clicks_label,         "#0369a1");
     cover_grid = add_metric(cover_grid, "Avg. Position",  &vm.exec_avg_position, "#7c3aed");
     b = b.add_component(cover_grid);
@@ -58,19 +58,19 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
     if let Some(trend) = &vm.exec_sessions_trend {
         let msg = if trend.is_positive {
             format!(
-                "Traffic waechst: {} Sessions ({} gg. Vorperiode). Search Clicks: {}.",
+                "Traffic is growing: {} sessions ({} vs. previous period). Search clicks: {}.",
                 vm.exec_sessions, trend.label, vm.exec_clicks
             )
         } else {
             format!(
-                "Traffic sinkt: {} Sessions ({} gg. Vorperiode). Ursachenanalyse empfohlen.",
+                "Traffic is declining: {} sessions ({} vs. previous period). Root cause analysis recommended.",
                 vm.exec_sessions, trend.label
             )
         };
         let c = if trend.is_positive {
-            Callout::success(msg).with_title("Traffic-Trend")
+            Callout::success(msg).with_title("Traffic Trend")
         } else {
-            Callout::warning(msg).with_title("Traffic-Trend")
+            Callout::warning(msg).with_title("Traffic Trend")
         };
         b = b.add_component(c);
     }
@@ -82,39 +82,39 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
             .collect::<Vec<_>>()
             .join("\n");
         b = b.add_component(
-            Callout::info(body).with_title("Top 3 To-Dos diese Woche")
+            Callout::info(body).with_title("Top 3 To-Dos This Week")
         );
     }
 
     b = b.add_component(PageBreak::new());
 
     // ════════════════════════════════════════════════════════════════════════
-    // 3. MASSNAHMEN & OPPORTUNITIES
+    // 3. ACTIONS & OPPORTUNITIES
     // ════════════════════════════════════════════════════════════════════════
 
     b = b
-        .add_component(Section::new("Massnahmen & Opportunities").with_level(1))
+        .add_component(Section::new("Actions & Opportunities").with_level(1))
         .add_component(
             TextBlock::new(
-                "Priorisiert nach Score = Impact x Confidence / Aufwand. \
-                 Potenzial = geschaetzte zusaetzliche Klicks pro Zeitraum."
+                "Prioritized by Score = Impact x Confidence / Effort. \
+                 Potential = estimated additional clicks per period."
             ).with_line_height("1.4em")
         );
 
     if vm.opportunities.is_empty() {
         b = b.add_component(
-            Callout::success("Keine kritischen Luecken identifiziert.")
-                .with_title("Gute Ausgangslage")
+            Callout::success("No critical gaps identified.")
+                .with_title("Good Starting Position")
         );
     } else {
         let mut opp_table = AuditTable::new(vec![
             TableColumn::new("Score").with_width("10%"),
-            TableColumn::new("Typ").with_width("20%"),
-            TableColumn::new("Keyword / Seite").with_width("25%"),
-            TableColumn::new("+Klicks").with_width("10%"),
+            TableColumn::new("Type").with_width("20%"),
+            TableColumn::new("Keyword / Page").with_width("25%"),
+            TableColumn::new("+Clicks").with_width("10%"),
             TableColumn::new("%").with_width("10%"),
-            TableColumn::new("Aufwand").with_width("12%"),
-        ]).with_title("Priorisierte Massnahmen");
+            TableColumn::new("Effort").with_width("12%"),
+        ]).with_title("Prioritized Actions");
 
         for o in &vm.opportunities {
             opp_table = opp_table.add_row(vec![
@@ -132,7 +132,7 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
         b = b.add_component(Section::new("Details Top 5").with_level(2));
         for o in vm.opportunities.iter().take(5) {
             b = b.add_component(
-                Callout::info(format!("Massnahme: {}\n\nDaten: {}", o.action, o.context))
+                Callout::info(format!("Action: {}\n\nData: {}", o.action, o.context))
                     .with_title(format!("[Score {}] {} - \"{}\"", o.score, o.type_label, o.keyword_or_url))
             );
         }
@@ -146,7 +146,7 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
 
     b = b
         .add_component(Section::new("Google Analytics").with_level(1))
-        .add_component(Section::new("Traffic nach Kanal").with_level(2))
+        .add_component(Section::new("Traffic by Channel").with_level(2))
         .add_component(
             TextBlock::new(format!("Engagement Rate: {}  -  Zeitraum: {}", vm.engagement_rate, vm.date_range))
                 .with_line_height("1.4em"),
@@ -154,9 +154,9 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
 
     if !vm.channel_rows.is_empty() {
         let mut table = AuditTable::new(vec![
-            TableColumn::new("Kanal").with_width("50%"),
+            TableColumn::new("Channel").with_width("50%"),
             TableColumn::new("Sessions").with_width("25%"),
-            TableColumn::new("Anteil").with_width("25%"),
+            TableColumn::new("Share").with_width("25%"),
         ]);
         for row in &vm.channel_rows {
             table = table.add_row(vec![row.channel.clone(), row.sessions.clone(), row.share.clone()]);
@@ -165,12 +165,12 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
     }
 
     // Top Referrer
-    b = b.add_component(Section::new("Traffic-Quellen").with_level(2));
+    b = b.add_component(Section::new("Traffic Sources").with_level(2));
     if !vm.top_sources.is_empty() {
         let mut table = AuditTable::new(vec![
-            TableColumn::new("Quelle").with_width("55%"),
+            TableColumn::new("Source").with_width("55%"),
             TableColumn::new("Sessions").with_width("25%"),
-            TableColumn::new("Anteil").with_width("20%"),
+            TableColumn::new("Share").with_width("20%"),
         ]).with_title("Top Referrer");
         for row in &vm.top_sources {
             table = table.add_row(vec![row.source.clone(), row.sessions.clone(), row.share.clone()]);
@@ -178,8 +178,8 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
         b = b.add_component(table);
     }
 
-    // KI-Traffic
-    b = b.add_component(Section::new("KI-Traffic").with_level(2));
+    // AI Traffic
+    b = b.add_component(Section::new("AI Traffic").with_level(2));
     if !vm.ai_source_rows.is_empty() {
         let total = vm.total_sessions_raw();
         let ai_pct = if total > 0 {
@@ -188,30 +188,30 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
 
         b = b.add_component(
             Callout::success(format!(
-                "{} KI-Sessions ({} des Gesamttraffics). KI-Tools zitieren Inhalte dieser Website.",
+                "{} AI sessions ({} of total traffic). AI tools are citing content from this website.",
                 super::builder::fmt_num(vm.ai_sessions_total), ai_pct
-            )).with_title("KI-Traffic erkannt")
+            )).with_title("AI Traffic Detected")
         );
 
-        // KI sources
+        // AI sources
         let mut ai_src_table = AuditTable::new(vec![
-            TableColumn::new("KI-Tool").with_width("55%"),
+            TableColumn::new("AI Tool").with_width("55%"),
             TableColumn::new("Sessions").with_width("25%"),
-            TableColumn::new("Anteil").with_width("20%"),
-        ]).with_title("KI-Referrer");
+            TableColumn::new("Share").with_width("20%"),
+        ]).with_title("AI Referrer");
         for row in &vm.ai_source_rows {
             ai_src_table = ai_src_table.add_row(vec![row.source.clone(), row.sessions.clone(), row.share.clone()]);
         }
         b = b.add_component(ai_src_table);
 
-        // KI traffic per page
+        // AI traffic per page
         if !vm.ai_page_rows.is_empty() {
-            b = b.add_component(Section::new("KI-Traffic nach Seite").with_level(2));
+            b = b.add_component(Section::new("AI Traffic by Page").with_level(2));
             let mut ai_page_table = AuditTable::new(vec![
-                TableColumn::new("Seite").with_width("60%"),
-                TableColumn::new("KI-Sessions").with_width("20%"),
-                TableColumn::new("Anteil").with_width("20%"),
-            ]).with_title("Welche Inhalte werden von KI-Tools zitiert?");
+                TableColumn::new("Page").with_width("60%"),
+                TableColumn::new("AI Sessions").with_width("20%"),
+                TableColumn::new("Share").with_width("20%"),
+            ]).with_title("Which content is being cited by AI tools?");
             for row in &vm.ai_page_rows {
                 ai_page_table = ai_page_table.add_row(vec![row.url.clone(), row.sessions.clone(), row.share_pct.clone()]);
             }
@@ -220,9 +220,9 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
     } else {
         b = b.add_component(
             Callout::info(
-                "Kein messbarer KI-Traffic (ChatGPT, Perplexity, Claude, Gemini...) im Zeitraum. \
-                 Strukturierte Inhalte und klare Definitionen erhoehen KI-Sichtbarkeit."
-            ).with_title("Noch kein KI-Traffic")
+                "No measurable AI traffic (ChatGPT, Perplexity, Claude, Gemini...) in this period. \
+                 Structured content and clear definitions increase AI visibility."
+            ).with_title("No AI Traffic Yet")
         );
     }
 
@@ -235,20 +235,20 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
     b = b.add_component(Section::new("Search Console").with_level(1));
 
     let mut sc_grid = Grid::new(2);
-    sc_grid = add_metric(sc_grid, "Impressionen", &vm.search_impressions, "#0369a1");
-    sc_grid = add_metric(sc_grid, "Klicks",       &vm.exec_clicks,        "#16a34a");
+    sc_grid = add_metric(sc_grid, "Impressions",  &vm.search_impressions, "#0369a1");
+    sc_grid = add_metric(sc_grid, "Clicks",       &vm.exec_clicks,        "#16a34a");
     sc_grid = add_metric(sc_grid, "CTR",          &vm.search_ctr,         "#d97706");
     sc_grid = add_metric(sc_grid, "Avg. Position",&vm.exec_avg_position,  "#7c3aed");
     b = b.add_component(sc_grid);
 
     if !vm.top_queries.is_empty() {
         let mut q_table = AuditTable::new(vec![
-            TableColumn::new("Suchanfrage").with_width("40%"),
-            TableColumn::new("Klicks").with_width("15%"),
+            TableColumn::new("Search Query").with_width("40%"),
+            TableColumn::new("Clicks").with_width("15%"),
             TableColumn::new("Impr.").with_width("15%"),
             TableColumn::new("CTR").with_width("15%"),
             TableColumn::new("Position").with_width("15%"),
-        ]).with_title("Top Suchanfragen");
+        ]).with_title("Top Search Queries");
         for q in &vm.top_queries {
             q_table = q_table.add_row(vec![q.query.clone(), q.clicks.clone(), q.impressions.clone(), q.ctr.clone(), q.position.clone()]);
         }
@@ -257,16 +257,16 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
 
     if !vm.opportunity_queries.is_empty() {
         b = b.add_component(
-            Callout::info("Position 4-20, niedrige CTR - bessere Titles koennen hier Klicks generieren.")
-                .with_title("CTR-Potenzial")
+            Callout::info("Position 4-20, low CTR - better titles can generate more clicks here.")
+                .with_title("CTR Potential")
         );
         let mut opp_q = AuditTable::new(vec![
-            TableColumn::new("Suchanfrage").with_width("40%"),
+            TableColumn::new("Search Query").with_width("40%"),
             TableColumn::new("Impr.").with_width("15%"),
             TableColumn::new("CTR").with_width("15%"),
             TableColumn::new("Position").with_width("15%"),
-            TableColumn::new("Klicks").with_width("15%"),
-        ]).with_title("Opportunity-Anfragen");
+            TableColumn::new("Clicks").with_width("15%"),
+        ]).with_title("Opportunity Queries");
         for q in &vm.opportunity_queries {
             opp_q = opp_q.add_row(vec![q.query.clone(), q.impressions.clone(), q.ctr.clone(), q.position.clone(), q.clicks.clone()]);
         }
@@ -276,18 +276,18 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
     b = b.add_component(PageBreak::new());
 
     // ════════════════════════════════════════════════════════════════════════
-    // 6. TOP SEITEN
+    // 6. TOP PAGES
     // ════════════════════════════════════════════════════════════════════════
 
-    b = b.add_component(Section::new("Top Seiten").with_level(1));
+    b = b.add_component(Section::new("Top Pages").with_level(1));
     if !vm.top_pages.is_empty() {
         let mut pages_table = AuditTable::new(vec![
-            TableColumn::new("Seite").with_width("40%"),
+            TableColumn::new("Page").with_width("40%"),
             TableColumn::new("Sessions").with_width("15%"),
-            TableColumn::new("Organisch").with_width("15%"),
-            TableColumn::new("Klicks").with_width("15%"),
+            TableColumn::new("Organic").with_width("15%"),
+            TableColumn::new("Clicks").with_width("15%"),
             TableColumn::new("Pos.").with_width("15%"),
-        ]).with_title("Seiten nach Traffic");
+        ]).with_title("Pages by Traffic");
         for p in &vm.top_pages {
             pages_table = pages_table.add_row(vec![p.url.clone(), p.sessions.clone(), p.organic.clone(), p.clicks.clone(), p.position.clone()]);
         }
@@ -297,12 +297,12 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
     b = b.add_component(PageBreak::new());
 
     // ════════════════════════════════════════════════════════════════════════
-    // 7. ALLE INSIGHTS
+    // 7. ALL INSIGHTS
     // ════════════════════════════════════════════════════════════════════════
 
-    b = b.add_component(Section::new("Diagnose & Insights").with_level(1));
+    b = b.add_component(Section::new("Diagnosis & Insights").with_level(1));
     if vm.insights.is_empty() {
-        b = b.add_component(Callout::success("Keine weiteren Auffaelligkeiten.").with_title("Alles in Ordnung"));
+        b = b.add_component(Callout::success("No further anomalies detected.").with_title("All Clear"));
     } else {
         for insight in &vm.insights {
             let c = match insight.severity {
@@ -317,9 +317,9 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
 
     // ── Render ────────────────────────────────────────────────────────────────
     let built = b.build();
-    let bytes = engine.render_pdf(&built).context("PDF-Rendering fehlgeschlagen")?;
+    let bytes = engine.render_pdf(&built).context("PDF rendering failed")?;
     std::fs::write(output_path, bytes)
-        .with_context(|| format!("Kann PDF nicht schreiben: {}", output_path))?;
+        .with_context(|| format!("Cannot write PDF: {}", output_path))?;
     Ok(())
 }
 

@@ -13,7 +13,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         .clone()
         .unwrap_or_else(|| sc_url.to_string());
 
-    let date_label = format!("letzte {} vs. vorherige {} Tage", days, days);
+    let date_label = format!("last {} vs. previous {} days", days, days);
 
     // Current period: last N days
     let current_req = SearchAnalyticsRequest {
@@ -122,8 +122,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         insights.push(Insight {
             severity: InsightSeverity::Positive,
             category: InsightCategory::Trend,
-            headline: "Kein signifikanter Content Decay erkannt".into(),
-            explanation: "Keine Seite zeigt einen deutlichen Rueckgang in Klicks oder Impressionen.".into(),
+            headline: "No significant content decay detected".into(),
+            explanation: "No page shows a significant decline in clicks or impressions.".into(),
         });
     } else {
         let total_click_loss: f64 = declining.iter()
@@ -133,9 +133,9 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         insights.push(Insight {
             severity: InsightSeverity::Warning,
             category: InsightCategory::Trend,
-            headline: format!("{} Seiten mit Decay erkannt", declining.len()),
+            headline: format!("{} pages with decay detected", declining.len()),
             explanation: format!(
-                "Geschaetzter Klick-Verlust: {:.0} Klicks im Vergleich zum Vorzeitraum.",
+                "Estimated click loss: {:.0} clicks compared to the previous period.",
                 total_click_loss
             ),
         });
@@ -147,8 +147,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             insights.push(Insight {
                 severity: InsightSeverity::Critical,
                 category: InsightCategory::Search,
-                headline: format!("{} Seiten komplett aus der Suche verschwunden", disappeared.len()),
-                explanation: "Diese Seiten hatten vorher Traffic, erscheinen jetzt aber nicht mehr in den Suchergebnissen.".into(),
+                headline: format!("{} pages completely disappeared from search", disappeared.len()),
+                explanation: "These pages previously had traffic but no longer appear in search results.".into(),
             });
         }
 
@@ -159,8 +159,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             insights.push(Insight {
                 severity: InsightSeverity::Warning,
                 category: InsightCategory::Search,
-                headline: format!("{} Seiten mit starkem Ranking-Verlust (>5 Positionen)", pos_drops.len()),
-                explanation: "Deutliche Ranking-Verschlechterung — Content-Qualitaet und Wettbewerbsanalyse pruefen.".into(),
+                headline: format!("{} pages with severe ranking loss (>5 positions)", pos_drops.len()),
+                explanation: "Significant ranking deterioration — check content quality and competitive analysis.".into(),
             });
         }
     }

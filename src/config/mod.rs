@@ -17,6 +17,10 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub thresholds: ThresholdsConfig,
+
+    /// Manual topic cluster definitions: name → list of matching terms
+    #[serde(default)]
+    pub clusters: std::collections::HashMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
