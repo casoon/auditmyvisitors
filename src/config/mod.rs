@@ -14,6 +14,9 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub report: ReportConfig,
+
+    #[serde(default)]
+    pub thresholds: ThresholdsConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -32,6 +35,46 @@ pub struct ReportConfig {
     pub default_days: u32,
     /// Default number of top pages to show
     pub top_pages_limit: usize,
+    /// Brand terms for query classification (e.g. ["mycompany", "my company"])
+    #[serde(default)]
+    pub brand_terms: Vec<String>,
+}
+
+/// Configurable thresholds for insight generation.
+/// All percentage values are absolute (e.g. 20.0 means 20%).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThresholdsConfig {
+    /// Organic share below this triggers a warning (default: 20%)
+    pub low_organic_pct: f64,
+    /// Direct share above this triggers an info (default: 60%)
+    pub high_direct_pct: f64,
+    /// Organic share above this triggers a positive insight (default: 70%)
+    pub high_organic_pct: f64,
+    /// Engagement rate below this triggers a warning (default: 0.3 = 30%)
+    pub low_engagement_rate: f64,
+    /// Engagement rate above this triggers a positive insight (default: 0.7 = 70%)
+    pub high_engagement_rate: f64,
+    /// Trend change beyond this % triggers a significant insight (default: 20%)
+    pub trend_significant_pct: f64,
+    /// Top 3 pages above this share triggers dependency warning (default: 60%)
+    pub top3_dependency_pct: f64,
+    /// Minimum sessions before generating session-based insights (default: 100)
+    pub min_sessions: i64,
+}
+
+impl Default for ThresholdsConfig {
+    fn default() -> Self {
+        Self {
+            low_organic_pct: 20.0,
+            high_direct_pct: 60.0,
+            high_organic_pct: 70.0,
+            low_engagement_rate: 0.3,
+            high_engagement_rate: 0.7,
+            trend_significant_pct: 20.0,
+            top3_dependency_pct: 60.0,
+            min_sessions: 100,
+        }
+    }
 }
 
 impl Default for ReportConfig {
@@ -39,6 +82,7 @@ impl Default for ReportConfig {
         Self {
             default_days: 28,
             top_pages_limit: 20,
+            brand_terms: Vec::new(),
         }
     }
 }

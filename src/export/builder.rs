@@ -105,7 +105,7 @@ pub fn build_view_model(
     // ── Top 3 To-Dos ─────────────────────────────────────────────────────────
     let top3_todos: Vec<String> = overview.opportunities.iter().take(3).map(|o| {
         let kw = o.keyword.as_deref()
-            .or_else(|| if o.url.is_empty() { None } else { Some(o.url.as_str()) })
+            .or(if o.url.is_empty() { None } else { Some(o.url.as_str()) })
             .unwrap_or("?");
         let labels = o.type_labels.join(" + ");
         format!(
@@ -162,17 +162,17 @@ pub fn build_view_model(
             ctr: format!("{:.1}%", q.ctr * 100.0), position: format!("{:.1}", q.position),
         }).collect();
 
+    // ── Insights (collect before top_pages is shadowed) ─────────────────────
+    let combined: Vec<&crate::domain::Insight> = overview.insights.iter()
+        .chain(top_pages.insights.iter())
+        .collect();
+
     // ── Pages ─────────────────────────────────────────────────────────────────
     let top_pages: Vec<PageRow> = top_pages.pages.iter().take(15).map(|p| PageRow {
         url: shorten_url(&p.url), sessions: fmt_num(p.sessions),
         organic: fmt_num(p.organic_sessions), clicks: format!("{:.0}", p.search.clicks),
         position: if p.search.average_position > 0.0 { format!("{:.1}", p.search.average_position) } else { "-".into() },
     }).collect();
-
-    // ── Insights ──────────────────────────────────────────────────────────────
-    let combined: Vec<&crate::domain::Insight> = overview.insights.iter()
-        .chain(std::iter::empty())
-        .collect();
     let mut all_insights: Vec<InsightRow> = combined.into_iter().map(|i| InsightRow {
         severity: i.severity.clone(), headline: i.headline.clone(), explanation: i.explanation.clone(),
     }).collect();
@@ -210,7 +210,7 @@ pub fn build_view_model(
 
 fn opp_to_row(o: &Opportunity) -> OpportunityRow {
     let kw = o.keyword.as_deref()
-        .or_else(|| if o.url.is_empty() { None } else { Some(o.url.as_str()) })
+        .or(if o.url.is_empty() { None } else { Some(o.url.as_str()) })
         .unwrap_or("-");
     let kw_short = if kw.len() > 45 { format!("{}...", &kw[..42]) } else { kw.to_string() };
 

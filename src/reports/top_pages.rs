@@ -3,6 +3,7 @@ use crate::domain::{PageSummary, SearchPerformanceBreakdown, TopPagesReport};
 use crate::errors::Result;
 use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
 use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::helpers;
 use crate::insights::insights_for_top_pages;
 use std::collections::HashMap;
 
@@ -73,40 +74,15 @@ pub async fn build(
     if let Some(sc) = sc_url {
         let sc_req = SearchAnalyticsRequest {
             site_url: sc,
-            start_date: chrono_days_ago(days),
-            end_date: chrono_yesterday(),
+            start_date: helpers::days_ago(days),
+            end_date: helpers::yesterday(),
             dimensions: vec!["page".into()],
             page_filter: None,
             row_limit: Some(1000),
         };
 
         let sc_resp = query(access_token, sc_req).await?;
-
-        for row in sc_resp.rows {
-            let page_url = row.keys.first().cloned().unwrap_or_default();
-
-            // Try direct match, then path-only match
-            let key = if page_map.contains_key(&page_url) {
-                Some(page_url.clone())
-            } else if let Ok(parsed) = url::Url::parse(&page_url) {
-                let path = parsed.path().to_string();
-                if page_map.contains_key(&path) { Some(path) } else { None }
-            } else {
-                None
-            };
-
-            if let Some(k) = key {
-                if let Some(entry) = page_map.get_mut(&k) {
-                    entry.search = SearchPerformanceBreakdown {
-                        clicks: row.clicks,
-                        impressions: row.impressions,
-                        ctr: row.ctr,
-                        average_position: row.position,
-                        top_queries: vec![],
-                    };
-                }
-            }
-        }
+        helpers::merge_sc_into_page_map(&sc_resp.rows, &mut page_map);
     }
 
     // ── Sort and truncate ────────────────────────────────────────────────────
@@ -127,17 +103,6 @@ pub async fn build(
         insights: vec![],
     };
 
-    insights_for_top_pages(&mut report);
+    insights_for_top_pages(&mut report, &config.thresholds);
     Ok(report)
-}
-
-
-fn chrono_days_ago(days: u32) -> String {
-    let date = chrono::Utc::now() - chrono::Duration::days(days as i64);
-    date.format("%Y-%m-%d").to_string()
-}
-
-fn chrono_yesterday() -> String {
-    let date = chrono::Utc::now() - chrono::Duration::days(1);
-    date.format("%Y-%m-%d").to_string()
 }

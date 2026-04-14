@@ -2,7 +2,9 @@ use colored::Colorize;
 use comfy_table::{Cell, CellAlignment, Table};
 
 use crate::domain::{
-    ComparisonReport, InsightSeverity, PageDetailReport, SiteOverviewReport, TopPagesReport,
+    AiTrafficReport, ChannelsReport, ComparisonReport, CountriesReport, DecayReport,
+    DevicesReport, InsightSeverity, OpportunitiesReport, PageDetailReport, QueriesReport,
+    SiteOverviewReport, TopPagesReport,
 };
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -28,11 +30,43 @@ pub fn print_auth_status(status: &crate::auth::AuthStatus) {
     }
 }
 
+// ─── Snapshot comparison ────────────────────────────────────────────────────
+
+pub fn print_snapshot_comparison(
+    prev: &crate::snapshots::Snapshot,
+    report: &SiteOverviewReport,
+) {
+    println!("{}", "VERGLEICH MIT LETZTEM SNAPSHOT".bold().underline());
+    println!("Letzter Snapshot: {} ({} Tage)\n", prev.date.cyan(), prev.days);
+
+    let sess_pct = crate::helpers::pct_change(prev.sessions as f64, report.traffic.total_sessions as f64);
+    let clicks_pct = crate::helpers::pct_change(prev.clicks, report.search.clicks);
+    let impr_pct = crate::helpers::pct_change(prev.impressions, report.search.impressions);
+
+    let sess = fmt_trend_colored(sess_pct, false);
+    let clicks = fmt_trend_colored(clicks_pct, false);
+    let impr = fmt_trend_colored(impr_pct, false);
+
+    println!("  Sessions {}  |  Klicks {}  |  Impressionen {}\n", sess, clicks, impr);
+}
+
 // ─── Overview ────────────────────────────────────────────────────────────────
 
 pub fn print_overview(report: &SiteOverviewReport) {
     println!("\n{}", "ÜBERSICHT".bold().underline());
     println!("Property: {}  |  Zeitraum: {}\n", report.property_name.cyan(), report.date_range);
+
+    // ── Trend summary (if available) ─────────────────────────────────────────
+    if let Some(trend) = &report.trend {
+        let sess = fmt_trend_colored(trend.sessions_pct, false);
+        let clicks = fmt_trend_colored(trend.clicks_pct, false);
+        let impr = fmt_trend_colored(trend.impressions_pct, false);
+        println!(
+            "{}  Sessions {}  |  Klicks {}  |  Impressionen {}",
+            "TREND".bold(), sess, clicks, impr
+        );
+        println!();
+    }
 
     let mut table = traffic_table();
     table.add_row(vec![
@@ -61,6 +95,46 @@ pub fn print_overview(report: &SiteOverviewReport) {
     ]);
     println!("{table}\n");
 
+    // ── Top sources ──────────────────────────────────────────────────────────
+    if !report.top_sources.is_empty() {
+        println!("{}", "TOP QUELLEN".bold().underline());
+        let mut src_table = Table::new();
+        src_table.set_header(vec![
+            Cell::new("Quelle"),
+            Cell::new("Sessions"),
+            Cell::new("Anteil"),
+        ]);
+        for src in report.top_sources.iter().take(10) {
+            let share = if report.traffic.total_sessions > 0 {
+                src.sessions as f64 / report.traffic.total_sessions as f64 * 100.0
+            } else { 0.0 };
+            src_table.add_row(vec![
+                Cell::new(&src.source),
+                Cell::new(format_number(src.sessions)).set_alignment(CellAlignment::Right),
+                Cell::new(format!("{:.1}%", share)).set_alignment(CellAlignment::Right),
+            ]);
+        }
+        println!("{src_table}\n");
+    }
+
+    // ── AI traffic ───────────────────────────────────────────────────────────
+    if !report.ai_sources.is_empty() {
+        let ai_total: i64 = report.ai_sources.iter().map(|s| s.sessions).sum();
+        let ai_pct = if report.traffic.total_sessions > 0 {
+            ai_total as f64 / report.traffic.total_sessions as f64 * 100.0
+        } else { 0.0 };
+        println!(
+            "{} {} Sessions ({:.1}%)",
+            "AI-TRAFFIC".bold().underline(),
+            format_number(ai_total),
+            ai_pct
+        );
+        for src in &report.ai_sources {
+            println!("  {} — {} Sessions", src.source, format_number(src.sessions));
+        }
+        println!();
+    }
+
     println!("{}", "SEARCH CONSOLE".bold().underline());
     let mut sc = traffic_table();
     sc.add_row(vec!["Klicks", &format_f64(report.search.clicks)]);
@@ -68,6 +142,29 @@ pub fn print_overview(report: &SiteOverviewReport) {
     sc.add_row(vec!["CTR", &format!("{:.1}%", report.search.ctr * 100.0)]);
     sc.add_row(vec!["Ø Position", &format!("{:.1}", report.search.average_position)]);
     println!("{sc}\n");
+
+    // ── Top opportunities (max 5) ────────────────────────────────────────────
+    if !report.opportunities.is_empty() {
+        println!("{}", "TOP OPPORTUNITIES".bold().underline());
+        for (i, opp) in report.opportunities.iter().take(5).enumerate() {
+            let kw = opp.keyword.as_deref()
+                .or(if opp.url.is_empty() { None } else { Some(opp.url.as_str()) })
+                .unwrap_or("-");
+            println!(
+                "  {}. {} — \"{}\" (+{:.0} Klicks, {})",
+                i + 1,
+                opp.type_labels.join(" + ").yellow(),
+                kw,
+                opp.estimated_clicks,
+                opp.opportunity_type.effort_label()
+            );
+        }
+        let total: f64 = report.opportunities.iter().map(|o| o.estimated_clicks).sum();
+        if total > 0.0 {
+            println!("  Geschaetztes Gesamt-Potenzial: {} Klicks/Monat", format!("+{:.0}", total).green());
+        }
+        println!();
+    }
 
     print_insights(&report.insights);
 }
@@ -164,11 +261,37 @@ pub fn print_comparison(report: &ComparisonReport) {
     println!("Stichtag: {}  |  Vorher: {} Tage  |  Nachher: {} Tage\n",
         report.change_date.yellow(), report.before_days, report.after_days);
 
+    // ── Verdict line ─────────────────────────────────────────────────────────
+    let d = &report.delta;
+    let winners: Vec<&str> = [
+        (d.sessions_pct >= 10.0, "Sessions"),
+        (d.clicks_pct >= 15.0, "Klicks"),
+        (d.impressions_pct >= 20.0, "Impressionen"),
+        (d.position_abs <= -2.0, "Position"),
+    ].iter().filter(|(cond, _)| *cond).map(|(_, l)| *l).collect();
+
+    let losers: Vec<&str> = [
+        (d.sessions_pct <= -10.0, "Sessions"),
+        (d.clicks_pct <= -15.0, "Klicks"),
+        (d.impressions_pct <= -20.0, "Impressionen"),
+        (d.position_abs >= 2.0, "Position"),
+    ].iter().filter(|(cond, _)| *cond).map(|(_, l)| *l).collect();
+
+    if !winners.is_empty() || !losers.is_empty() {
+        if !winners.is_empty() {
+            println!("{} {}", "Gewinner:".green().bold(), winners.join(", "));
+        }
+        if !losers.is_empty() {
+            println!("{} {}", "Verlierer:".red().bold(), losers.join(", "));
+        }
+        println!();
+    }
+
     let mut table = Table::new();
     table.set_header(vec![
         Cell::new("Kennzahl"),
-        Cell::new(&format!("Vorher\n{}–{}", report.before.start_date, report.before.end_date)),
-        Cell::new(&format!("Nachher\n{}–{}", report.after.start_date, report.after.end_date)),
+        Cell::new(format!("Vorher\n{}–{}", report.before.start_date, report.before.end_date)),
+        Cell::new(format!("Nachher\n{}–{}", report.after.start_date, report.after.end_date)),
         Cell::new("Δ absolut"),
         Cell::new("Δ %"),
     ]);
@@ -320,4 +443,348 @@ fn add_comparison_row_f64(
         Cell::new(format!("{:+.2}{unit}", delta)).set_alignment(CellAlignment::Right),
         Cell::new("—").set_alignment(CellAlignment::Right),
     ]);
+}
+
+fn fmt_trend_colored(pct: f64, lower_is_better: bool) -> String {
+    let s = format!("{:+.1}%", pct);
+    if pct == 0.0 {
+        "—".to_string()
+    } else if (pct > 0.0) != lower_is_better {
+        s.green().to_string()
+    } else {
+        s.red().to_string()
+    }
+}
+
+// ─── Opportunities report ────────────────────────────────────────────────────
+
+pub fn print_opportunities(report: &OpportunitiesReport) {
+    println!("\n{}", "OPPORTUNITIES".bold().underline());
+    println!("Property: {}  |  Zeitraum: {}\n", report.property_name.cyan(), report.date_range);
+
+    if report.opportunities.is_empty() {
+        println!("Keine signifikanten Opportunities gefunden.\n");
+        return;
+    }
+
+    println!("{}\n", report.summary);
+
+    let mut table = Table::new();
+    table.set_header(vec![
+        Cell::new("#"),
+        Cell::new("Score"),
+        Cell::new("Typ"),
+        Cell::new("Keyword / URL"),
+        Cell::new("+ Klicks"),
+        Cell::new("Aufwand"),
+    ]);
+
+    for (i, opp) in report.opportunities.iter().enumerate() {
+        let kw = opp.keyword.as_deref()
+            .or(if opp.url.is_empty() { None } else { Some(opp.url.as_str()) })
+            .unwrap_or("-");
+        let kw_short = if kw.len() > 45 { format!("{}...", &kw[..42]) } else { kw.to_string() };
+
+        table.add_row(vec![
+            Cell::new(i + 1).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.1}", opp.score)).set_alignment(CellAlignment::Right),
+            Cell::new(opp.type_labels.join(" + ")),
+            Cell::new(&kw_short),
+            Cell::new(format!("+{:.0}", opp.estimated_clicks)).set_alignment(CellAlignment::Right),
+            Cell::new(opp.opportunity_type.effort_label()),
+        ]);
+    }
+    println!("{table}\n");
+
+    // Detail cards for top 5
+    println!("{}", "DETAIL".bold().underline());
+    for (i, opp) in report.opportunities.iter().take(5).enumerate() {
+        let kw = opp.keyword.as_deref()
+            .or(if opp.url.is_empty() { None } else { Some(opp.url.as_str()) })
+            .unwrap_or("-");
+        println!("{}. {} — \"{}\"", i + 1, opp.type_labels.join(" + ").yellow(), kw);
+        println!("   {}", opp.context);
+        println!("   {}", opp.action.bold());
+        println!();
+    }
+
+    print_insights(&report.insights);
+}
+
+// ─── Queries report ──────────────────────────────────────────────────────────
+
+pub fn print_queries(report: &QueriesReport) {
+    println!("\n{}", "QUERY-ANALYSE".bold().underline());
+    println!("Property: {}  |  Zeitraum: {}\n", report.property_name.cyan(), report.date_range);
+
+    let mut summary = traffic_table();
+    summary.add_row(vec!["Klicks gesamt", &format_f64(report.total_clicks)]);
+    summary.add_row(vec!["Impressionen gesamt", &format_f64(report.total_impressions)]);
+    summary.add_row(vec!["Ø CTR", &format!("{:.1}%", report.avg_ctr * 100.0)]);
+    summary.add_row(vec!["Ø Position (gewichtet)", &format!("{:.1}", report.avg_position)]);
+    if report.brand_clicks > 0.0 || report.non_brand_clicks > 0.0 {
+        let brand_pct = if report.total_clicks > 0.0 {
+            report.brand_clicks / report.total_clicks * 100.0
+        } else { 0.0 };
+        summary.add_row(vec![
+            "Brand / Non-Brand",
+            &format!("{:.0} ({:.0}%) / {:.0} ({:.0}%)",
+                report.brand_clicks, brand_pct,
+                report.non_brand_clicks, 100.0 - brand_pct)
+        ]);
+    }
+    println!("{summary}\n");
+
+    let mut table = Table::new();
+    table.set_header(vec![
+        Cell::new("#"),
+        Cell::new("Query"),
+        Cell::new("Klicks"),
+        Cell::new("Impressionen"),
+        Cell::new("CTR"),
+        Cell::new("Position"),
+        Cell::new("Signal"),
+    ]);
+
+    for (i, q) in report.queries.iter().enumerate() {
+        let signal = query_signal(q);
+        table.add_row(vec![
+            Cell::new(i + 1).set_alignment(CellAlignment::Right),
+            Cell::new(shorten_url(&q.query, 40)),
+            Cell::new(format_f64(q.clicks)).set_alignment(CellAlignment::Right),
+            Cell::new(format_f64(q.impressions)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.1}%", q.ctr * 100.0)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.1}", q.position)).set_alignment(CellAlignment::Right),
+            Cell::new(signal),
+        ]);
+    }
+    println!("{table}\n");
+
+    print_insights(&report.insights);
+}
+
+fn query_signal(q: &crate::domain::QueryRow) -> String {
+    use crate::opportunities::expected_ctr;
+
+    if q.position <= 10.0 && q.impressions >= 50.0 && q.ctr < expected_ctr(q.position) * 0.7 {
+        "CTR-Fix".yellow().to_string()
+    } else if q.position > 10.0 && q.position <= 20.0 && q.impressions >= 100.0 {
+        "Push".blue().to_string()
+    } else if q.ctr > 0.05 && q.clicks > 20.0 {
+        "Stark".green().to_string()
+    } else {
+        String::new()
+    }
+}
+
+// ─── AI Traffic report ───────────────────────────────────────────────────────
+
+pub fn print_ai_traffic(report: &AiTrafficReport) {
+    println!("\n{}", "AI-TRAFFIC ANALYSE".bold().underline());
+    println!("Property: {}  |  Zeitraum: {}\n", report.property_name.cyan(), report.date_range);
+
+    let mut summary = traffic_table();
+    summary.add_row(vec!["Sessions gesamt", &format_number(report.total_sessions)]);
+    summary.add_row(vec!["AI-Sessions", &format_number(report.ai_sessions)]);
+    summary.add_row(vec!["AI-Anteil", &format!("{:.2}%", report.ai_share_pct)]);
+    println!("{summary}\n");
+
+    if !report.ai_sources.is_empty() {
+        println!("{}", "AI-QUELLEN".bold().underline());
+        let mut table = Table::new();
+        table.set_header(vec![
+            Cell::new("Quelle"),
+            Cell::new("Sessions"),
+            Cell::new("Anteil an AI"),
+        ]);
+        let ai_total = report.ai_sessions;
+        for src in &report.ai_sources {
+            let share = if ai_total > 0 { src.sessions as f64 / ai_total as f64 * 100.0 } else { 0.0 };
+            table.add_row(vec![
+                Cell::new(&src.source),
+                Cell::new(format_number(src.sessions)).set_alignment(CellAlignment::Right),
+                Cell::new(format!("{:.1}%", share)).set_alignment(CellAlignment::Right),
+            ]);
+        }
+        println!("{table}\n");
+    }
+
+    if !report.ai_pages.is_empty() {
+        println!("{}", "SEITEN MIT AI-TRAFFIC".bold().underline());
+        let mut table = Table::new();
+        table.set_header(vec![
+            Cell::new("#"),
+            Cell::new("Seite"),
+            Cell::new("Sessions"),
+            Cell::new("Anteil"),
+        ]);
+        for (i, page) in report.ai_pages.iter().enumerate() {
+            table.add_row(vec![
+                Cell::new(i + 1).set_alignment(CellAlignment::Right),
+                Cell::new(shorten_url(&page.url, 55)),
+                Cell::new(format_number(page.sessions)).set_alignment(CellAlignment::Right),
+                Cell::new(format!("{:.0}%", page.share_of_ai * 100.0)).set_alignment(CellAlignment::Right),
+            ]);
+        }
+        println!("{table}\n");
+    }
+
+    print_insights(&report.insights);
+}
+
+// ─── Channels report ─────────────────────────────────────────────────────────
+
+pub fn print_channels(report: &ChannelsReport) {
+    println!("\n{}", "KANAL-ANALYSE".bold().underline());
+    println!(
+        "Property: {}  |  Zeitraum: {}  |  Sessions: {}\n",
+        report.property_name.cyan(),
+        report.date_range,
+        format_number(report.total_sessions)
+    );
+
+    let mut table = Table::new();
+    table.set_header(vec![
+        Cell::new("Kanal"),
+        Cell::new("Sessions"),
+        Cell::new("Anteil"),
+        Cell::new("Engagement"),
+        Cell::new("Ø Dauer"),
+    ]);
+
+    for ch in &report.channels {
+        table.add_row(vec![
+            Cell::new(&ch.channel),
+            Cell::new(format_number(ch.sessions)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.1}%", ch.share_pct)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.0}%", ch.engagement_rate * 100.0)).set_alignment(CellAlignment::Right),
+            Cell::new(format_duration(ch.avg_session_duration_secs)).set_alignment(CellAlignment::Right),
+        ]);
+    }
+    println!("{table}\n");
+
+    print_insights(&report.insights);
+}
+
+// ─── Decay report ────────────────────────────────────────────────────────────
+
+pub fn print_decay(report: &DecayReport) {
+    println!("\n{}", "CONTENT DECAY".bold().underline());
+    println!("Property: {}  |  Zeitraum: {}\n", report.property_name.cyan(), report.date_range);
+
+    if report.declining_pages.is_empty() {
+        println!("Kein signifikanter Content Decay erkannt.\n");
+        print_insights(&report.insights);
+        return;
+    }
+
+    let mut table = Table::new();
+    table.set_header(vec![
+        Cell::new("#"),
+        Cell::new("Seite"),
+        Cell::new("Klicks\nvorher"),
+        Cell::new("Klicks\nnachher"),
+        Cell::new("Δ Klicks"),
+        Cell::new("Impr.\nvorher"),
+        Cell::new("Impr.\nnachher"),
+        Cell::new("Δ Impr."),
+        Cell::new("Pos.\nvorher"),
+        Cell::new("Pos.\nnachher"),
+        Cell::new("Δ Pos."),
+    ]);
+
+    for (i, page) in report.declining_pages.iter().enumerate() {
+        let clicks_delta = format!("{:+.1}%", page.clicks_pct);
+        let impr_delta = format!("{:+.1}%", page.impressions_pct);
+        let pos_delta = if page.position_delta == 0.0 && page.position_after == 0.0 {
+            "—".to_string()
+        } else {
+            format!("{:+.1}", page.position_delta)
+        };
+
+        table.add_row(vec![
+            Cell::new(i + 1).set_alignment(CellAlignment::Right),
+            Cell::new(shorten_url(&page.url, 45)),
+            Cell::new(format!("{:.0}", page.clicks_before)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.0}", page.clicks_after)).set_alignment(CellAlignment::Right),
+            Cell::new(clicks_delta.red().to_string()).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.0}", page.impressions_before)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.0}", page.impressions_after)).set_alignment(CellAlignment::Right),
+            Cell::new(impr_delta.red().to_string()).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.1}", page.position_before)).set_alignment(CellAlignment::Right),
+            Cell::new(if page.position_after > 0.0 { format!("{:.1}", page.position_after) } else { "—".into() }).set_alignment(CellAlignment::Right),
+            Cell::new(pos_delta).set_alignment(CellAlignment::Right),
+        ]);
+    }
+    println!("{table}\n");
+
+    print_insights(&report.insights);
+}
+
+// ─── Devices report ─────────────────────────────────────────────────────────
+
+pub fn print_devices(report: &DevicesReport) {
+    println!("\n{}", "GERÄTE-ANALYSE".bold().underline());
+    println!(
+        "Property: {}  |  Zeitraum: {}  |  Sessions: {}\n",
+        report.property_name.cyan(),
+        report.date_range,
+        format_number(report.total_sessions)
+    );
+
+    let mut table = Table::new();
+    table.set_header(vec![
+        Cell::new("Gerät"),
+        Cell::new("Sessions"),
+        Cell::new("Anteil"),
+        Cell::new("Engagement"),
+        Cell::new("Ø Dauer"),
+    ]);
+
+    for d in &report.devices {
+        table.add_row(vec![
+            Cell::new(&d.device),
+            Cell::new(format_number(d.sessions)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.1}%", d.share_pct)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.0}%", d.engagement_rate * 100.0)).set_alignment(CellAlignment::Right),
+            Cell::new(format_duration(d.avg_session_duration_secs)).set_alignment(CellAlignment::Right),
+        ]);
+    }
+    println!("{table}\n");
+
+    print_insights(&report.insights);
+}
+
+// ─── Countries report ───────────────────────────────────────────────────────
+
+pub fn print_countries(report: &CountriesReport) {
+    println!("\n{}", "LÄNDER-ANALYSE".bold().underline());
+    println!(
+        "Property: {}  |  Zeitraum: {}  |  Sessions: {}\n",
+        report.property_name.cyan(),
+        report.date_range,
+        format_number(report.total_sessions)
+    );
+
+    let mut table = Table::new();
+    table.set_header(vec![
+        Cell::new("#"),
+        Cell::new("Land"),
+        Cell::new("Sessions"),
+        Cell::new("Anteil"),
+        Cell::new("Engagement"),
+    ]);
+
+    for (i, c) in report.countries.iter().enumerate() {
+        table.add_row(vec![
+            Cell::new(i + 1).set_alignment(CellAlignment::Right),
+            Cell::new(&c.country),
+            Cell::new(format_number(c.sessions)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.1}%", c.share_pct)).set_alignment(CellAlignment::Right),
+            Cell::new(format!("{:.0}%", c.engagement_rate * 100.0)).set_alignment(CellAlignment::Right),
+        ]);
+    }
+    println!("{table}\n");
+
+    print_insights(&report.insights);
 }

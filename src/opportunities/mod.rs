@@ -214,3 +214,172 @@ pub fn opportunities_from_overview(
 ) -> Vec<Opportunity> {
     generate_opportunities(queries, pages, days)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::SearchPerformanceBreakdown;
+
+    #[test]
+    fn expected_ctr_position_1() {
+        assert!((expected_ctr(1.0) - 0.28).abs() < 0.001);
+    }
+
+    #[test]
+    fn expected_ctr_position_10() {
+        assert!((expected_ctr(10.0) - 0.03).abs() < 0.001);
+    }
+
+    #[test]
+    fn expected_ctr_position_20() {
+        assert!((expected_ctr(20.0) - 0.01).abs() < 0.001);
+    }
+
+    #[test]
+    fn expected_ctr_interpolates() {
+        let ctr_5 = expected_ctr(5.0);
+        assert!((ctr_5 - 0.07).abs() < 0.001);
+        // Position 2.5 should be between 0.28 and 0.11
+        let ctr_2_5 = expected_ctr(2.5);
+        assert!(ctr_2_5 > 0.11 && ctr_2_5 < 0.15);
+    }
+
+    #[test]
+    fn expected_ctr_extreme_values() {
+        assert!((expected_ctr(0.0) - 0.28).abs() < 0.001);
+        assert!((expected_ctr(-1.0) - 0.28).abs() < 0.001);
+        assert!((expected_ctr(50.0) - 0.01).abs() < 0.001);
+    }
+
+    #[test]
+    fn ctr_fix_opportunity_generated() {
+        let queries = vec![QueryRow {
+            query: "test keyword".into(),
+            clicks: 5.0,
+            impressions: 500.0,
+            ctr: 0.01,     // 1% actual, position 3 expects 11%
+            position: 3.0,
+        }];
+        let ops = generate_opportunities(&queries, &[], 28);
+        assert!(!ops.is_empty());
+        let ctr_fix = ops.iter().find(|o| o.opportunity_type == OpportunityType::CtrFix);
+        assert!(ctr_fix.is_some(), "Expected a CtrFix opportunity");
+    }
+
+    #[test]
+    fn ranking_push_opportunity() {
+        let queries = vec![QueryRow {
+            query: "push keyword".into(),
+            clicks: 10.0,
+            impressions: 200.0,
+            ctr: 0.05,
+            position: 8.0,
+        }];
+        let ops = generate_opportunities(&queries, &[], 28);
+        let push = ops.iter().find(|o| o.opportunity_type == OpportunityType::RankingPush);
+        assert!(push.is_some(), "Expected a RankingPush opportunity");
+    }
+
+    #[test]
+    fn content_expansion_opportunity() {
+        let queries = vec![QueryRow {
+            query: "expand keyword".into(),
+            clicks: 2.0,
+            impressions: 300.0,
+            ctr: 0.007,
+            position: 12.0,
+        }];
+        let ops = generate_opportunities(&queries, &[], 28);
+        // After grouping, the merged entry should include ContentExpansion in its type labels
+        assert!(!ops.is_empty());
+        let has_expand_label = ops.iter().any(|o|
+            o.type_labels.iter().any(|l| l.contains("Content"))
+        );
+        assert!(has_expand_label, "Expected ContentExpansion in type labels");
+    }
+
+    #[test]
+    fn internal_linking_opportunity() {
+        let pages = vec![PageSummary {
+            url: "/test-page".into(),
+            sessions: 5,
+            organic_sessions: 3,
+            direct_sessions: 2,
+            engagement_rate: 0.5,
+            avg_session_duration_secs: 30.0,
+            search: SearchPerformanceBreakdown {
+                clicks: 10.0,
+                impressions: 200.0,
+                ctr: 0.05,
+                average_position: 5.0,
+                top_queries: vec![],
+            },
+        }];
+        let ops = generate_opportunities(&[], &pages, 28);
+        let link = ops.iter().find(|o| o.opportunity_type == OpportunityType::InternalLinking);
+        assert!(link.is_some(), "Expected an InternalLinking opportunity");
+    }
+
+    #[test]
+    fn low_impression_queries_skipped() {
+        let queries = vec![QueryRow {
+            query: "tiny".into(),
+            clicks: 1.0,
+            impressions: 10.0, // below 30 threshold
+            ctr: 0.01,
+            position: 3.0,
+        }];
+        let ops = generate_opportunities(&queries, &[], 28);
+        assert!(ops.is_empty(), "Low-impression queries should be skipped");
+    }
+
+    #[test]
+    fn grouping_merges_same_keyword() {
+        let queries = vec![QueryRow {
+            query: "same keyword".into(),
+            clicks: 5.0,
+            impressions: 500.0,
+            ctr: 0.01,
+            position: 7.0, // qualifies for both CTR fix (pos 1-10) and ranking push (pos 5-15)
+        }];
+        let ops = generate_opportunities(&queries, &[], 28);
+        // Should be grouped into a single entry
+        let keyword_ops: Vec<_> = ops.iter()
+            .filter(|o| o.keyword.as_deref() == Some("same keyword"))
+            .collect();
+        assert_eq!(keyword_ops.len(), 1, "Same keyword should be grouped");
+        assert!(keyword_ops[0].type_labels.len() >= 2, "Should have multiple type labels");
+    }
+
+    #[test]
+    fn score_formula_correct() {
+        // Score = impact * confidence / effort
+        let queries = vec![QueryRow {
+            query: "score test".into(),
+            clicks: 10.0,
+            impressions: 1000.0,
+            ctr: 0.01,     // 1%, position 1 expects 28%
+            position: 1.0,
+        }];
+        let ops = raw_opportunities(&queries, &[]);
+        let ctr_fix = ops.iter().find(|o| o.opportunity_type == OpportunityType::CtrFix).unwrap();
+        let impact = 1000.0 * (0.28 - 0.01);
+        let confidence = (1001.0_f64).log10();
+        let expected_score = impact * confidence / 1.0;
+        assert!((ctr_fix.score - expected_score).abs() < 0.1);
+    }
+
+    #[test]
+    fn max_15_opportunities() {
+        // Create many qualifying queries
+        let queries: Vec<QueryRow> = (0..50).map(|i| QueryRow {
+            query: format!("keyword_{}", i),
+            clicks: 5.0,
+            impressions: 500.0,
+            ctr: 0.01,
+            position: 3.0,
+        }).collect();
+        let ops = generate_opportunities(&queries, &[], 28);
+        assert!(ops.len() <= 15, "Should cap at 15 opportunities, got {}", ops.len());
+    }
+}

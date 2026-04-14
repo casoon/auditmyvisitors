@@ -40,6 +40,12 @@ pub enum Command {
         #[command(subcommand)]
         action: ExportAction,
     },
+
+    /// Manage local snapshots for trend tracking
+    Snapshot {
+        #[command(subcommand)]
+        action: SnapshotAction,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -113,6 +119,73 @@ pub enum ReportAction {
         #[arg(long)]
         since: String,
     },
+
+    /// Prioritised opportunities for traffic growth
+    Opportunities {
+        /// Number of days to look back (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
+    },
+
+    /// Query-level search performance analysis
+    Queries {
+        /// Number of days to look back (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
+
+        /// How many queries to show (default: 30)
+        #[arg(long, short = 'n')]
+        limit: Option<usize>,
+
+        /// Sort by: clicks (default), impressions, ctr, position
+        #[arg(long, default_value = "clicks")]
+        sort_by: String,
+    },
+
+    /// AI referral traffic breakdown
+    AiTraffic {
+        /// Number of days to look back (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
+    },
+
+    /// Traffic channel breakdown with engagement metrics
+    Channels {
+        /// Number of days to look back (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
+    },
+
+    /// Content decay detection — pages losing search performance
+    Decay {
+        /// Number of days to look back per period (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
+    },
+
+    /// Traffic by device category (desktop, mobile, tablet)
+    Devices {
+        /// Number of days to look back (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
+    },
+
+    /// Traffic by country
+    Countries {
+        /// Number of days to look back (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
+
+        /// How many countries to show (default: 20)
+        #[arg(long, short = 'n')]
+        limit: Option<usize>,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+pub enum SnapshotAction {
+    /// List saved snapshots
+    List,
 }
 
 #[derive(Debug, Subcommand)]
@@ -124,6 +197,36 @@ pub enum ExportAction {
         days: Option<u32>,
 
         /// Output file path (default: ./output/<property>-YYYY-MM-DD.pdf)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+    },
+
+    /// Export report data as JSON
+    Json {
+        /// Number of days to look back (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
+
+        /// Output file path (default: stdout)
+        #[arg(long, short = 'o')]
+        output: Option<String>,
+    },
+
+    /// Export report data as CSV
+    Csv {
+        /// Which report to export: top-pages, queries, opportunities, channels, devices, countries, decay
+        #[arg(long, short = 'r')]
+        report: String,
+
+        /// Number of days to look back (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
+
+        /// How many rows to include (default depends on report)
+        #[arg(long, short = 'n')]
+        limit: Option<usize>,
+
+        /// Output file path (default: stdout)
         #[arg(long, short = 'o')]
         output: Option<String>,
     },

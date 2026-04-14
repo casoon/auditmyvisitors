@@ -1,6 +1,20 @@
 # auditmyvisitors
 
-Google Analytics 4 and Search Console reports directly in your terminal.
+Local CLI reporting for Google Analytics 4 and Search Console.
+
+`auditmyvisitors` helps website owners and small teams answer practical questions quickly:
+
+- Where is traffic growing or falling?
+- Which pages have search visibility but weak on-site performance?
+- Which URLs look promising for CTR or landing page improvements?
+- What changed before and after a deploy, content update, or relaunch?
+
+The current product is intentionally lightweight:
+
+- local-first
+- API-based
+- no backend
+- no BigQuery setup required
 
 ```
 auditmyvisitors report overview
@@ -63,6 +77,62 @@ auditmyvisitors properties select
 # 3. Run your first report
 auditmyvisitors report overview
 ```
+
+## What it is
+
+`auditmyvisitors` is a local CLI for combined GA4 and Search Console reporting.
+
+It is built for:
+
+- fast site overviews
+- page-level analysis
+- before/after comparisons
+- opportunity and risk detection
+- exportable reports for sharing
+
+It is not currently:
+
+- a BI platform
+- a Looker Studio replacement
+- a BigQuery warehouse product
+- a raw-event funnel analysis tool
+
+## Data Scope & Retention
+
+`auditmyvisitors` currently works primarily with the GA4 Data API and aggregated GA4 reporting data, plus Search Console API data. It does not currently depend on BigQuery raw exports.
+
+This matters for planning and interpretation:
+
+- GA4 data retention settings mainly affect non-aggregated data, such as Explorations and funnel-style analyses.
+- Standard aggregated GA4 reports are not affected by that retention setting in the same way.
+- If you want the longest available retention in a standard GA4 property, increase it in `Admin > Property > Data settings > Data retention`, set `Event data retention` to `14 months`, then click `Save`.
+- In many setups, `User data retention` is already set to `14 months`; the setting that often still needs attention is `Event data retention`, which is frequently left at `2 months`.
+- You need the `Editor` role to change this setting.
+- Important limitation: standard GA4 properties allow `2 months` or `14 months`; `26/38/50 months` are only available in GA4 360, and Large/XL properties can be limited to `2 months`.
+
+In practice, that means `auditmyvisitors` is well suited for:
+
+- live reporting
+- comparisons around a specific change date
+- page and landing page analysis
+- opportunity detection on top of standard GA4 and Search Console data
+
+Current limits to keep in mind:
+
+- no BigQuery dependency in the core product
+- no raw-event funnels or event-sequence journey analysis
+- no exact query-to-conversion attribution model
+- no warehouse-style joins against CRM, CMS, or product databases
+
+If BigQuery support is added later, it should extend the product rather than redefine the core workflow.
+
+## Roadmap
+
+The current roadmap is documented in [ziel.md](/Users/jseidel/GitHub/auditmyvisitors/ziel.md:1). In short:
+
+- `Now`: strengthen overview, page, top-pages, compare, and PDF export on top of GA4 Data API and Search Console API.
+- `Next`: add better segmentation, directory analysis, page-type logic, and scoring.
+- `Later`: optionally add BigQuery-based raw-data and advanced analysis features for teams that need them.
 
 ## Commands
 

@@ -6,6 +6,7 @@ use crate::domain::{
 use crate::errors::Result;
 use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
 use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::helpers;
 use crate::insights::insights_for_overview;
 use crate::opportunities::opportunities_from_overview;
 
@@ -182,8 +183,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         // Fetch totals (by date) for current + prev period in one request
         let totals_req = SearchAnalyticsRequest {
             site_url: sc.clone(),
-            start_date: chrono_days_ago(days * 2),
-            end_date: chrono_yesterday(),
+            start_date: helpers::days_ago(days * 2),
+            end_date: helpers::yesterday(),
             dimensions: vec!["date".into()],
             page_filter: None,
             row_limit: Some(1000),
@@ -191,8 +192,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
 
         let queries_req = SearchAnalyticsRequest {
             site_url: sc,
-            start_date: chrono_days_ago(days),
-            end_date: chrono_yesterday(),
+            start_date: helpers::days_ago(days),
+            end_date: helpers::yesterday(),
             dimensions: vec!["query".into()],
             page_filter: None,
             row_limit: Some(50),
@@ -206,7 +207,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         let queries_resp = queries_resp?;
 
         // Split rows into current vs previous by date cutoff
-        let cutoff = chrono_days_ago(days);
+        let cutoff = helpers::days_ago(days);
         let cutoff_date = chrono::NaiveDate::parse_from_str(&cutoff, "%Y-%m-%d")
             .unwrap_or_default();
 
@@ -263,9 +264,9 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
 
     // ── Period-over-period delta ───────────────────────────────────────────────
     let trend = if prev_sessions > 0 || prev_clicks > 0.0 {
-        let sessions_pct = pct_change(prev_sessions as f64, traffic.total_sessions as f64);
-        let clicks_pct   = pct_change(prev_clicks, search.clicks);
-        let impr_pct     = pct_change(prev_impressions, search.impressions);
+        let sessions_pct = helpers::pct_change(prev_sessions as f64, traffic.total_sessions as f64);
+        let clicks_pct   = helpers::pct_change(prev_clicks, search.clicks);
+        let impr_pct     = helpers::pct_change(prev_impressions, search.impressions);
         Some(PeriodDelta {
             sessions_pct,
             clicks_pct,
@@ -309,23 +310,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         insights: vec![],
     };
 
-    insights_for_overview(&mut report);
+    insights_for_overview(&mut report, &config.thresholds);
     Ok(report)
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-fn pct_change(prev: f64, curr: f64) -> f64 {
-    if prev == 0.0 { return 0.0; }
-    (curr - prev) / prev * 100.0
-}
-
-fn chrono_days_ago(days: u32) -> String {
-    let date = chrono::Utc::now() - chrono::Duration::days(days as i64);
-    date.format("%Y-%m-%d").to_string()
-}
-
-fn chrono_yesterday() -> String {
-    let date = chrono::Utc::now() - chrono::Duration::days(1);
-    date.format("%Y-%m-%d").to_string()
-}

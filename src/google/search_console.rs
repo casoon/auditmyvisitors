@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::errors::{AppError, Result};
+use crate::errors::Result;
 
 use super::parse_google_response;
 
@@ -38,15 +38,12 @@ pub struct SearchAnalyticsResponse {
 
 /// List all Search Console properties accessible with the given token.
 pub async fn list_sites(access_token: &str) -> Result<Vec<String>> {
-    let client = reqwest::Client::new();
+    let client = super::http_client();
     let url = format!("{BASE}/sites");
 
-    let response = client
-        .get(&url)
-        .bearer_auth(access_token)
-        .send()
-        .await
-        .map_err(AppError::Http)?;
+    let response = super::send_with_retry(|| {
+        client.get(&url).bearer_auth(access_token)
+    }).await?;
 
     let body = parse_google_response(response).await?;
 
@@ -64,7 +61,7 @@ pub async fn query(
     access_token: &str,
     req: SearchAnalyticsRequest,
 ) -> Result<SearchAnalyticsResponse> {
-    let client = reqwest::Client::new();
+    let client = super::http_client();
     let encoded_site = urlencoding::encode(&req.site_url);
     let url = format!("{BASE}/sites/{encoded_site}/searchAnalytics/query");
 
@@ -88,13 +85,9 @@ pub async fn query(
         }]);
     }
 
-    let response = client
-        .post(&url)
-        .bearer_auth(access_token)
-        .json(&body)
-        .send()
-        .await
-        .map_err(AppError::Http)?;
+    let response = super::send_with_retry(|| {
+        client.post(&url).bearer_auth(access_token).json(&body)
+    }).await?;
 
     let json = parse_google_response(response).await?;
 

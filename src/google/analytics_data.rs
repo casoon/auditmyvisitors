@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::errors::{AppError, Result};
+use crate::errors::Result;
 
 use super::parse_google_response;
 
@@ -66,18 +66,14 @@ pub async fn run_report(
     access_token: &str,
     request: ReportRequest,
 ) -> Result<RunReportResponse> {
-    let client = reqwest::Client::new();
+    let client = super::http_client();
     let url = format!("{BASE}/{}:runReport", request.property_id);
 
     let body = build_report_body(&request);
 
-    let response = client
-        .post(&url)
-        .bearer_auth(access_token)
-        .json(&body)
-        .send()
-        .await
-        .map_err(AppError::Http)?;
+    let response = super::send_with_retry(|| {
+        client.post(&url).bearer_auth(access_token).json(&body)
+    }).await?;
 
     let json = parse_google_response(response).await?;
     parse_run_report_response(json)

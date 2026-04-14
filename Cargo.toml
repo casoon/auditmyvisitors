@@ -47,6 +47,9 @@ webbrowser = "1"
 # PDF generation
 renderreport = "0.2.4"
 
+# CSV export
+csv = "1"
+
 # Error handling
 thiserror = "1"
 anyhow = "1"

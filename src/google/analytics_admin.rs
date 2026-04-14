@@ -19,15 +19,12 @@ pub struct Ga4Property {
 
 /// Fetches all GA4 properties accessible with the given access token.
 pub async fn list_properties(access_token: &str) -> Result<Vec<Ga4Property>> {
-    let client = reqwest::Client::new();
+    let client = super::http_client();
     let url = format!("{BASE}/accountSummaries");
 
-    let response = client
-        .get(&url)
-        .bearer_auth(access_token)
-        .send()
-        .await
-        .map_err(crate::errors::AppError::Http)?;
+    let response = super::send_with_retry(|| {
+        client.get(&url).bearer_auth(access_token)
+    }).await?;
 
     let body = parse_google_response(response).await?;
 

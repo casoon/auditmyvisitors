@@ -5,6 +5,7 @@ use crate::domain::{
 use crate::errors::Result;
 use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
 use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::helpers;
 use crate::insights::insights_for_page;
 use serde_json::json;
 
@@ -23,7 +24,7 @@ pub async fn build(
         .unwrap_or_else(|| property_id.clone());
 
     // Determine the path part for GA4 filter
-    let path = extract_path(url);
+    let path = helpers::extract_path(url);
     let date_range = DateRange::last_n_days(days);
     let date_label = format!("letzte {} Tage", days);
 
@@ -80,8 +81,8 @@ pub async fn build(
     let search = if let Some(sc) = sc_url {
         let query_req = SearchAnalyticsRequest {
             site_url: sc.clone(),
-            start_date: chrono_days_ago(days),
-            end_date: chrono_yesterday(),
+            start_date: helpers::days_ago(days),
+            end_date: helpers::yesterday(),
             dimensions: vec!["query".into()],
             page_filter: Some(url.to_string()),
             row_limit: Some(20),
@@ -89,8 +90,8 @@ pub async fn build(
 
         let page_req = SearchAnalyticsRequest {
             site_url: sc,
-            start_date: chrono_days_ago(days),
-            end_date: chrono_yesterday(),
+            start_date: helpers::days_ago(days),
+            end_date: helpers::yesterday(),
             dimensions: vec!["page".into()],
             page_filter: Some(url.to_string()),
             row_limit: Some(1),
@@ -133,7 +134,7 @@ pub async fn build(
         SearchPerformanceBreakdown::default()
     };
 
-    let recommendations = build_recommendations(&traffic, &search);
+    let recommendations = build_recommendations(&traffic, &search, engagement_rate, avg_session_duration);
 
     let mut report = PageDetailReport {
         url: url.to_string(),
@@ -147,49 +148,114 @@ pub async fn build(
         recommendations,
     };
 
-    insights_for_page(&mut report);
+    insights_for_page(&mut report, &config.thresholds);
     Ok(report)
 }
 
 fn build_recommendations(
     traffic: &TrafficSourceBreakdown,
     search: &SearchPerformanceBreakdown,
+    engagement_rate: f64,
+    avg_session_duration: f64,
 ) -> Vec<Recommendation> {
     let mut recs = Vec::new();
     let mut prio = 1u8;
 
-    if search.impressions > 200.0 && search.ctr < 0.02 {
+    // CTR fix: good position but low CTR
+    if search.average_position > 0.0 && search.average_position <= 10.0
+        && search.impressions > 100.0
+        && search.ctr < crate::opportunities::expected_ctr(search.average_position) * 0.7
+    {
         recs.push(Recommendation {
             priority: prio,
-            headline: "Meta-Titel und Description optimieren".into(),
+            headline: "Snippet optimieren (Title & Description)".into(),
+            action: format!(
+                "Position {:.1} bei {:.0} Impressionen, aber nur {:.1}% CTR. \
+                Title und Meta Description auf Suchintent und Klick-Anreiz pruefen.",
+                search.average_position, search.impressions, search.ctr * 100.0
+            ),
+        });
+        prio += 1;
+    }
+
+    // High impressions, very low CTR (broader threshold)
+    if search.impressions > 200.0 && search.ctr < 0.02 && prio == 1 {
+        recs.push(Recommendation {
+            priority: prio,
+            headline: "Meta-Titel und Description ueberarbeiten".into(),
             action: "Klick-treibende Formulierungen testen; Suchintent klarer adressieren.".into(),
         });
         prio += 1;
     }
 
+    // Low organic share
     if traffic.organic_share() < 20.0 && traffic.total_sessions > 50 {
         recs.push(Recommendation {
             priority: prio,
-            headline: "SEO-Potenzial erschließen".into(),
-            action: "Interne Verlinkung stärken und Seite für relevante Keywords optimieren.".into(),
+            headline: "SEO-Potenzial erschliessen".into(),
+            action: "Interne Verlinkung staerken und Seite fuer relevante Keywords optimieren.".into(),
+        });
+        prio += 1;
+    }
+
+    // Good search position but few sessions → internal linking
+    if search.average_position > 0.0 && search.average_position < 10.0
+        && search.impressions > 50.0
+        && traffic.total_sessions < 10
+    {
+        recs.push(Recommendation {
+            priority: prio,
+            headline: "Interne Verlinkung zu dieser Seite erhoehen".into(),
+            action: format!(
+                "Position {:.1} bei {:.0} Impressionen, aber nur {} Sessions. \
+                Interne Links von thematisch verwandten Seiten setzen.",
+                search.average_position, search.impressions, traffic.total_sessions
+            ),
+        });
+        prio += 1;
+    }
+
+    // Weak engagement
+    if engagement_rate < 0.3 && traffic.total_sessions > 20 {
+        recs.push(Recommendation {
+            priority: prio,
+            headline: "Engagement verbessern".into(),
+            action: format!(
+                "Engagement Rate nur {:.0}%. Ladezeit pruefen, Content-Relevanz sicherstellen, \
+                Call-to-Actions und interne Navigation optimieren.",
+                engagement_rate * 100.0
+            ),
+        });
+        prio += 1;
+    }
+
+    // Very short session duration
+    if avg_session_duration < 15.0 && avg_session_duration > 0.0 && traffic.total_sessions > 20 {
+        recs.push(Recommendation {
+            priority: prio,
+            headline: "Verweildauer erhoehen".into(),
+            action: format!(
+                "Durchschnittliche Sitzungsdauer nur {:.0}s. Inhalte vertiefen, \
+                verwandte Inhalte verlinken, Lesbarkeit verbessern.",
+                avg_session_duration
+            ),
+        });
+        prio += 1;
+    }
+
+    // Content expansion opportunity (many impressions, few clicks, position not great)
+    if search.impressions > 200.0 && search.clicks < 5.0 && search.average_position > 10.0 {
+        recs.push(Recommendation {
+            priority: prio,
+            headline: "Content ausbauen".into(),
+            action: format!(
+                "{:.0} Impressionen bei Position {:.1}, aber nur {:.0} Klicks. \
+                Inhalt erweitern, Suchintention besser adressieren.",
+                search.impressions, search.average_position, search.clicks
+            ),
         });
     }
 
     recs
 }
 
-fn extract_path(url: &str) -> String {
-    url::Url::parse(url)
-        .map(|u| u.path().to_string())
-        .unwrap_or_else(|_| url.to_string())
-}
-
-fn chrono_days_ago(days: u32) -> String {
-    let date = chrono::Utc::now() - chrono::Duration::days(days as i64);
-    date.format("%Y-%m-%d").to_string()
-}
-
-fn chrono_yesterday() -> String {
-    let date = chrono::Utc::now() - chrono::Duration::days(1);
-    date.format("%Y-%m-%d").to_string()
-}

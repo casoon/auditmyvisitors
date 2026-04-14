@@ -8,6 +8,7 @@ use crate::domain::{
 use crate::errors::{AppError, Result};
 use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
 use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::helpers;
 use crate::insights::insights_for_comparison;
 use serde_json::json;
 
@@ -107,9 +108,7 @@ async fn fetch_period(
     };
 
     let filter = page_url.map(|u| {
-        let path = url::Url::parse(u)
-            .map(|p| p.path().to_string())
-            .unwrap_or_else(|_| u.to_string());
+        let path = helpers::extract_path(u);
         json!({
             "filter": {
                 "fieldName": "pagePath",
@@ -185,21 +184,16 @@ fn compute_delta(
     b_s: &SearchPerformanceBreakdown,
     a_s: &SearchPerformanceBreakdown,
 ) -> ComparisonDelta {
-    let pct = |before: f64, after: f64| -> f64 {
-        if before == 0.0 { return 0.0; }
-        (after - before) / before * 100.0
-    };
-
     ComparisonDelta {
         sessions_abs: a_t.total_sessions - b_t.total_sessions,
-        sessions_pct: pct(b_t.total_sessions as f64, a_t.total_sessions as f64),
+        sessions_pct: helpers::pct_change(b_t.total_sessions as f64, a_t.total_sessions as f64),
         organic_sessions_abs: a_t.organic_sessions - b_t.organic_sessions,
-        organic_sessions_pct: pct(b_t.organic_sessions as f64, a_t.organic_sessions as f64),
+        organic_sessions_pct: helpers::pct_change(b_t.organic_sessions as f64, a_t.organic_sessions as f64),
         engagement_rate_abs: 0.0,
         clicks_abs: a_s.clicks - b_s.clicks,
-        clicks_pct: pct(b_s.clicks, a_s.clicks),
+        clicks_pct: helpers::pct_change(b_s.clicks, a_s.clicks),
         impressions_abs: a_s.impressions - b_s.impressions,
-        impressions_pct: pct(b_s.impressions, a_s.impressions),
+        impressions_pct: helpers::pct_change(b_s.impressions, a_s.impressions),
         ctr_abs: a_s.ctr - b_s.ctr,
         position_abs: a_s.average_position - b_s.average_position,
     }

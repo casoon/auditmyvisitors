@@ -234,6 +234,137 @@ pub struct AiPageRow {
     pub share_of_ai: f64, // 0.0–1.0
 }
 
+// ─── Standalone Opportunities Report ─────────────────────────────────────────
+
+/// Standalone opportunities report — query- and page-level opportunities
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpportunitiesReport {
+    pub property_name: String,
+    pub date_range: String,
+    pub opportunities: Vec<Opportunity>,
+    pub total_estimated_clicks: f64,
+    pub summary: String,
+    pub insights: Vec<Insight>,
+}
+
+// ─── Queries Report ──────────────────────────────────────────────────────────
+
+/// Query-level analysis with opportunity scoring
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueriesReport {
+    pub property_name: String,
+    pub date_range: String,
+    pub queries: Vec<QueryRow>,
+    pub total_clicks: f64,
+    pub total_impressions: f64,
+    pub avg_ctr: f64,
+    pub avg_position: f64,
+    pub brand_clicks: f64,
+    pub non_brand_clicks: f64,
+    pub insights: Vec<Insight>,
+}
+
+// ─── AI Traffic Report ───────────────────────────────────────────────────────
+
+/// AI referral traffic breakdown
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AiTrafficReport {
+    pub property_name: String,
+    pub date_range: String,
+    pub total_sessions: i64,
+    pub ai_sessions: i64,
+    pub ai_share_pct: f64,
+    pub ai_sources: Vec<SourceRow>,
+    pub ai_pages: Vec<AiPageRow>,
+    pub insights: Vec<Insight>,
+}
+
+// ─── Channels Report ─────────────────────────────────────────────────────────
+
+/// Channel breakdown report
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelsReport {
+    pub property_name: String,
+    pub date_range: String,
+    pub channels: Vec<ChannelDetail>,
+    pub total_sessions: i64,
+    pub insights: Vec<Insight>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelDetail {
+    pub channel: String,
+    pub sessions: i64,
+    pub share_pct: f64,
+    pub engagement_rate: f64,
+    pub avg_session_duration_secs: f64,
+}
+
+// ─── Decay Report ────────────────────────────────────────────────────────────
+
+/// Content decay report — pages losing search performance
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecayReport {
+    pub property_name: String,
+    pub date_range: String,
+    pub days: u32,
+    pub declining_pages: Vec<DecayPage>,
+    pub insights: Vec<Insight>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DecayPage {
+    pub url: String,
+    pub clicks_before: f64,
+    pub clicks_after: f64,
+    pub clicks_pct: f64,
+    pub impressions_before: f64,
+    pub impressions_after: f64,
+    pub impressions_pct: f64,
+    pub position_before: f64,
+    pub position_after: f64,
+    pub position_delta: f64,
+}
+
+// ─── Devices Report ──────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DevicesReport {
+    pub property_name: String,
+    pub date_range: String,
+    pub devices: Vec<DeviceDetail>,
+    pub total_sessions: i64,
+    pub insights: Vec<Insight>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceDetail {
+    pub device: String,
+    pub sessions: i64,
+    pub share_pct: f64,
+    pub engagement_rate: f64,
+    pub avg_session_duration_secs: f64,
+}
+
+// ─── Countries Report ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CountriesReport {
+    pub property_name: String,
+    pub date_range: String,
+    pub countries: Vec<CountryDetail>,
+    pub total_sessions: i64,
+    pub insights: Vec<Insight>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CountryDetail {
+    pub country: String,
+    pub sessions: i64,
+    pub share_pct: f64,
+    pub engagement_rate: f64,
+}
+
 // ─── Insights & Recommendations ──────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

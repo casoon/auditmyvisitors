@@ -5,9 +5,11 @@ mod domain;
 mod errors;
 mod export;
 mod google;
+mod helpers;
 mod insights;
 mod opportunities;
 mod reports;
+mod snapshots;
 mod storage;
 mod ui;
 
@@ -16,7 +18,7 @@ use clap::Parser;
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 
-use cli::{AuthAction, Cli, Command, ExportAction, PropertiesAction, ReportAction};
+use cli::{AuthAction, Cli, Command, ExportAction, PropertiesAction, ReportAction, SnapshotAction};
 use config::AppConfig;
 
 #[tokio::main]
@@ -43,6 +45,7 @@ async fn run() -> anyhow::Result<()> {
         Command::Properties { action } => handle_properties(action, &mut config).await?,
         Command::Report { action } => handle_report(action, &config).await?,
         Command::Export { action } => handle_export(action, &config).await?,
+        Command::Snapshot { action } => handle_snapshot(action, &config)?,
     }
 
     Ok(())
@@ -174,6 +177,28 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
             let report = reports::overview::build(config, &token, days).await?;
             pb.finish_and_clear();
             ui::print_overview(&report);
+
+            // Show snapshot comparison if a previous snapshot exists
+            let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+            if let Ok(Some(prev)) = snapshots::load_previous(&report.property_name, &today) {
+                ui::print_snapshot_comparison(&prev, &report);
+            }
+
+            // Auto-save snapshot
+            let snap = snapshots::Snapshot {
+                date: chrono::Utc::now().format("%Y-%m-%d").to_string(),
+                days,
+                sessions: report.traffic.total_sessions,
+                organic_sessions: report.traffic.organic_sessions,
+                engagement_rate: report.engagement_rate,
+                clicks: report.search.clicks,
+                impressions: report.search.impressions,
+                ctr: report.search.ctr,
+                avg_position: report.search.average_position,
+            };
+            if let Err(e) = snapshots::save(&report.property_name, &snap) {
+                tracing::warn!("Snapshot konnte nicht gespeichert werden: {}", e);
+            }
         }
 
         ReportAction::TopPages { days, limit, sort_by } => {
@@ -201,14 +226,188 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
             pb.finish_and_clear();
             ui::print_comparison(&report);
         }
+
+        ReportAction::Opportunities { days } => {
+            let days = days.unwrap_or(config.report.default_days);
+            let pb = spinner(&format!("Opportunities für letzte {} Tage werden analysiert…", days));
+            let report = reports::opportunities::build(config, &token, days).await?;
+            pb.finish_and_clear();
+            ui::print_opportunities(&report);
+        }
+
+        ReportAction::Queries { days, limit, sort_by } => {
+            let days = days.unwrap_or(config.report.default_days);
+            let limit = limit.unwrap_or(30);
+            let pb = spinner(&format!("Query-Analyse für letzte {} Tage wird geladen…", days));
+            let report = reports::queries::build(config, &token, days, limit, &sort_by).await?;
+            pb.finish_and_clear();
+            ui::print_queries(&report);
+        }
+
+        ReportAction::AiTraffic { days } => {
+            let days = days.unwrap_or(config.report.default_days);
+            let pb = spinner(&format!("AI-Traffic für letzte {} Tage wird analysiert…", days));
+            let report = reports::ai_traffic::build(config, &token, days).await?;
+            pb.finish_and_clear();
+            ui::print_ai_traffic(&report);
+        }
+
+        ReportAction::Channels { days } => {
+            let days = days.unwrap_or(config.report.default_days);
+            let pb = spinner(&format!("Kanal-Analyse für letzte {} Tage wird geladen…", days));
+            let report = reports::channels::build(config, &token, days).await?;
+            pb.finish_and_clear();
+            ui::print_channels(&report);
+        }
+
+        ReportAction::Decay { days } => {
+            let days = days.unwrap_or(config.report.default_days);
+            let pb = spinner(&format!("Content-Decay für letzte {} Tage wird analysiert…", days));
+            let report = reports::decay::build(config, &token, days).await?;
+            pb.finish_and_clear();
+            ui::print_decay(&report);
+        }
+
+        ReportAction::Devices { days } => {
+            let days = days.unwrap_or(config.report.default_days);
+            let pb = spinner(&format!("Geräte-Analyse für letzte {} Tage wird geladen…", days));
+            let report = reports::devices::build(config, &token, days).await?;
+            pb.finish_and_clear();
+            ui::print_devices(&report);
+        }
+
+        ReportAction::Countries { days, limit } => {
+            let days = days.unwrap_or(config.report.default_days);
+            let limit = limit.unwrap_or(20);
+            let pb = spinner(&format!("Länder-Analyse für letzte {} Tage wird geladen…", days));
+            let report = reports::countries::build(config, &token, days, limit).await?;
+            pb.finish_and_clear();
+            ui::print_countries(&report);
+        }
     }
     Ok(())
 }
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 
+#[derive(serde::Serialize)]
+struct JsonExport {
+    overview: domain::SiteOverviewReport,
+    top_pages: domain::TopPagesReport,
+}
+
 async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Result<()> {
     match action {
+        ExportAction::Json { days, output } => {
+            let token = auth::ensure_valid_token().await
+                .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
+
+            let days = days.unwrap_or(config.report.default_days);
+            let pb = spinner(&format!("Daten für letzte {} Tage werden geladen…", days));
+
+            let (overview, top_pages) = tokio::join!(
+                reports::overview::build(config, &token, days),
+                reports::top_pages::build(config, &token, days, 50, "sessions"),
+            );
+            let overview = overview?;
+            let top_pages = top_pages?;
+            pb.finish_and_clear();
+
+            let export = JsonExport { overview, top_pages };
+            let json = serde_json::to_string_pretty(&export)?;
+
+            if let Some(path) = output {
+                if let Some(parent) = std::path::Path::new(&path).parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&path, &json)?;
+                println!("{} JSON gespeichert: {}", "✓".green().bold(), path.cyan());
+            } else {
+                println!("{json}");
+            }
+        }
+
+        ExportAction::Csv { report: report_type, days, limit, output } => {
+            let token = auth::ensure_valid_token().await
+                .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
+
+            let days = days.unwrap_or(config.report.default_days);
+            let pb = spinner(&format!("Daten für letzte {} Tage werden geladen…", days));
+
+            let csv_bytes: Vec<u8> = match report_type.as_str() {
+                "top-pages" => {
+                    let limit = limit.unwrap_or(config.report.top_pages_limit);
+                    let report = reports::top_pages::build(config, &token, days, limit, "sessions").await?;
+                    pb.finish_and_clear();
+                    let mut buf = Vec::new();
+                    export::csv::write_top_pages(&report, &mut buf)?;
+                    buf
+                }
+                "queries" => {
+                    let limit = limit.unwrap_or(30);
+                    let report = reports::queries::build(config, &token, days, limit, "clicks").await?;
+                    pb.finish_and_clear();
+                    let mut buf = Vec::new();
+                    export::csv::write_queries(&report, &mut buf)?;
+                    buf
+                }
+                "opportunities" => {
+                    let report = reports::opportunities::build(config, &token, days).await?;
+                    pb.finish_and_clear();
+                    let mut buf = Vec::new();
+                    export::csv::write_opportunities(&report, &mut buf)?;
+                    buf
+                }
+                "channels" => {
+                    let report = reports::channels::build(config, &token, days).await?;
+                    pb.finish_and_clear();
+                    let mut buf = Vec::new();
+                    export::csv::write_channels(&report, &mut buf)?;
+                    buf
+                }
+                "devices" => {
+                    let report = reports::devices::build(config, &token, days).await?;
+                    pb.finish_and_clear();
+                    let mut buf = Vec::new();
+                    export::csv::write_devices(&report, &mut buf)?;
+                    buf
+                }
+                "countries" => {
+                    let limit = limit.unwrap_or(20);
+                    let report = reports::countries::build(config, &token, days, limit).await?;
+                    pb.finish_and_clear();
+                    let mut buf = Vec::new();
+                    export::csv::write_countries(&report, &mut buf)?;
+                    buf
+                }
+                "decay" => {
+                    let report = reports::decay::build(config, &token, days).await?;
+                    pb.finish_and_clear();
+                    let mut buf = Vec::new();
+                    export::csv::write_decay(&report, &mut buf)?;
+                    buf
+                }
+                other => {
+                    pb.finish_and_clear();
+                    anyhow::bail!(
+                        "Unbekannter Report-Typ: '{}'. Verfuegbar: top-pages, queries, opportunities, channels, devices, countries, decay",
+                        other
+                    );
+                }
+            };
+
+            if let Some(path) = output {
+                if let Some(parent) = std::path::Path::new(&path).parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&path, &csv_bytes)?;
+                println!("{} CSV gespeichert: {}", "✓".green().bold(), path.cyan());
+            } else {
+                use std::io::Write;
+                std::io::stdout().write_all(&csv_bytes)?;
+            }
+        }
+
         ExportAction::Pdf { days, output } => {
             let token = auth::ensure_valid_token().await
                 .context("Bitte zuerst einloggen: auditmyvisitors auth login")?;
@@ -250,6 +449,56 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
 
             pb.finish_and_clear();
             println!("{} PDF gespeichert: {}", "✓".green().bold(), path.cyan());
+        }
+    }
+    Ok(())
+}
+
+// ─── Snapshots ──────────────────────────────────────────────────────────────
+
+fn handle_snapshot(action: SnapshotAction, config: &AppConfig) -> anyhow::Result<()> {
+    match action {
+        SnapshotAction::List => {
+            let property_name = config
+                .properties
+                .ga4_property_name
+                .as_deref()
+                .unwrap_or("unknown");
+
+            let snaps = snapshots::list(property_name)?;
+            if snaps.is_empty() {
+                println!("Keine Snapshots vorhanden. Fuehre zuerst {} aus.", "report overview".cyan());
+                return Ok(());
+            }
+
+            println!("\n{}", "SNAPSHOTS".bold().underline());
+            println!("Property: {}\n", property_name.cyan());
+
+            let mut table = comfy_table::Table::new();
+            table.set_header(vec![
+                comfy_table::Cell::new("Datum"),
+                comfy_table::Cell::new("Tage"),
+                comfy_table::Cell::new("Sessions"),
+                comfy_table::Cell::new("Organisch"),
+                comfy_table::Cell::new("Klicks"),
+                comfy_table::Cell::new("Impressionen"),
+                comfy_table::Cell::new("CTR"),
+                comfy_table::Cell::new("Position"),
+            ]);
+
+            for snap in &snaps {
+                table.add_row(vec![
+                    comfy_table::Cell::new(&snap.date),
+                    comfy_table::Cell::new(snap.days),
+                    comfy_table::Cell::new(snap.sessions),
+                    comfy_table::Cell::new(snap.organic_sessions),
+                    comfy_table::Cell::new(format!("{:.0}", snap.clicks)),
+                    comfy_table::Cell::new(format!("{:.0}", snap.impressions)),
+                    comfy_table::Cell::new(format!("{:.1}%", snap.ctr * 100.0)),
+                    comfy_table::Cell::new(format!("{:.1}", snap.avg_position)),
+                ]);
+            }
+            println!("{table}\n");
         }
     }
     Ok(())
