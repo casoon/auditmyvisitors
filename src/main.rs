@@ -265,6 +265,14 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
             ui::print_channels(&report);
         }
 
+        ReportAction::Clusters { days } => {
+            let days = days.unwrap_or(config.report.default_days);
+            let pb = spinner(&format!("Analyzing topic clusters for last {} days…", days));
+            let report = reports::clusters::build(config, &token, days).await?;
+            pb.finish_and_clear();
+            ui::print_clusters(&report);
+        }
+
         ReportAction::Decay { days } => {
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Analyzing content decay for last {} days…", days));
@@ -370,6 +378,13 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                     export::csv::write_channels(&report, &mut buf)?;
                     buf
                 }
+                "clusters" => {
+                    let report = reports::clusters::build(config, &token, days).await?;
+                    pb.finish_and_clear();
+                    let mut buf = Vec::new();
+                    export::csv::write_clusters(&report, &mut buf)?;
+                    buf
+                }
                 "devices" => {
                     let report = reports::devices::build(config, &token, days).await?;
                     pb.finish_and_clear();
@@ -395,7 +410,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                 other => {
                     pb.finish_and_clear();
                     anyhow::bail!(
-                        "Unknown report type: '{}'. Available: top-pages, queries, opportunities, channels, devices, countries, decay",
+                        "Unknown report type: '{}'. Available: top-pages, queries, opportunities, channels, clusters, devices, countries, decay",
                         other
                     );
                 }

@@ -156,6 +156,13 @@ pub enum ReportAction {
         days: Option<u32>,
     },
 
+    /// Topic cluster analysis across pages and queries
+    Clusters {
+        /// Number of days to look back (default: 28)
+        #[arg(long, short = 'd')]
+        days: Option<u32>,
+    },
+
     /// Content decay detection — pages losing search performance
     Decay {
         /// Number of days to look back per period (default: 28)
@@ -214,7 +221,7 @@ pub enum ExportAction {
 
     /// Export report data as CSV
     Csv {
-        /// Which report to export: top-pages, queries, opportunities, channels, devices, countries, decay
+        /// Which report to export: top-pages, queries, opportunities, channels, clusters, devices, countries, decay
         #[arg(long, short = 'r')]
         report: String,
 
