@@ -7,6 +7,15 @@ use crate::domain::{
     SiteOverviewReport, TopPagesReport,
 };
 
+// ─── Welcome ────────────────────────────────────────────────────────────────
+
+pub fn print_welcome() {
+    println!();
+    println!("{}", "auditmyvisitors".bold().cyan());
+    println!("{}", "Google Analytics 4 & Search Console Reporting".dimmed());
+    println!();
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 pub fn print_auth_status(status: &crate::auth::AuthStatus) {

@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="casoon/auditmyvisitors"
 BINARY="auditmyvisitors"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 
 # Detect OS and architecture
 OS="$(uname -s)"
@@ -31,32 +31,32 @@ case "$OS" in
     ;;
 esac
 
-# Get latest release URL
-DOWNLOAD_URL="https://github.com/$REPO/releases/latest/download/$ARTIFACT"
+# Get latest release tag
+VERSION="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+  | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"//;s/".*//')"
 
-echo "Downloading auditmyvisitors..."
+if [ -z "$VERSION" ]; then
+  echo "Could not determine latest version." && exit 1
+fi
+
+DOWNLOAD_URL="https://github.com/$REPO/releases/download/$VERSION/$ARTIFACT"
+
+echo "Installing auditmyvisitors $VERSION ..."
 curl -fsSL "$DOWNLOAD_URL" -o "/tmp/$BINARY"
 chmod +x "/tmp/$BINARY"
 
-# Install — try /usr/local/bin, fall back to ~/bin
-if [ -w "$INSTALL_DIR" ]; then
-  mv "/tmp/$BINARY" "$INSTALL_DIR/$BINARY"
-else
-  echo "No write access to $INSTALL_DIR — installing to ~/bin instead"
-  mkdir -p "$HOME/bin"
-  mv "/tmp/$BINARY" "$HOME/bin/$BINARY"
-  INSTALL_DIR="$HOME/bin"
+mkdir -p "$INSTALL_DIR"
+mv "/tmp/$BINARY" "$INSTALL_DIR/$BINARY"
 
-  # Remind user to add ~/bin to PATH if needed
-  if [[ ":$PATH:" != *":$HOME/bin:"* ]]; then
-    echo ""
-    echo "Add the following to your ~/.zshrc or ~/.bashrc:"
-    echo "  export PATH=\"\$HOME/bin:\$PATH\""
-  fi
+# Remind user to add install dir to PATH if needed
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+  echo ""
+  echo "Add the following to your ~/.zshrc or ~/.bashrc:"
+  echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
 fi
 
 echo ""
-echo "✓ auditmyvisitors installed to $INSTALL_DIR/$BINARY"
+echo "✓ auditmyvisitors $VERSION installed to $INSTALL_DIR/$BINARY"
 echo ""
 echo "Get started:"
-echo "  auditmyvisitors auth login"
+echo "  auditmyvisitors"

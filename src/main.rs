@@ -7,6 +7,7 @@ mod export;
 mod google;
 mod helpers;
 mod insights;
+mod interactive;
 mod opportunities;
 mod reports;
 mod snapshots;
@@ -41,11 +42,12 @@ async fn run() -> anyhow::Result<()> {
     let mut config = AppConfig::load().context("Cannot load config")?;
 
     match cli.command {
-        Command::Auth { action } => handle_auth(action, &config).await?,
-        Command::Properties { action } => handle_properties(action, &mut config).await?,
-        Command::Report { action } => handle_report(action, &config).await?,
-        Command::Export { action } => handle_export(action, &config).await?,
-        Command::Snapshot { action } => handle_snapshot(action, &config)?,
+        Some(Command::Auth { action }) => handle_auth(action, &config).await?,
+        Some(Command::Properties { action }) => handle_properties(action, &mut config).await?,
+        Some(Command::Report { action }) => handle_report(action, &config).await?,
+        Some(Command::Export { action }) => handle_export(action, &config).await?,
+        Some(Command::Snapshot { action }) => handle_snapshot(action, &config)?,
+        None => interactive::run(&mut config).await?,
     }
 
     Ok(())
