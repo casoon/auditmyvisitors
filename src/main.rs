@@ -179,9 +179,36 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::Overview { days } => {
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Loading overview for last {} days…", days));
-            let report = reports::overview::build(config, &token, days).await?;
+            let (report, top_pages, opportunities, growth, trends, clusters) = tokio::join!(
+                reports::overview::build(config, &token, days),
+                reports::top_pages::build(config, &token, days, 10, "sessions"),
+                reports::opportunities::build(config, &token, days),
+                reports::growth::build(config, &token, days),
+                reports::trends::build(config, &token, days),
+                reports::clusters::build(config, &token, days),
+            );
+            let report = report?;
+            let top_pages = top_pages?;
+            let opportunities = opportunities?;
+            let growth = growth?;
+            let trends = trends?;
+            let clusters = clusters?;
             pb.finish_and_clear();
             ui::print_overview(&report);
+
+            let narrative_input = narrative::NarrativeInput {
+                overview: Some(&report),
+                top_pages: Some(&top_pages),
+                opportunities: Some(&opportunities),
+                growth: Some(&growth),
+                ai_traffic: None,
+                clusters: Some(&clusters),
+            };
+            let summary = narrative::management_summary(&narrative_input);
+            ui::print_management_summary(&summary);
+            ui::print_growth_highlights(&growth);
+            ui::print_trend_highlights(&trends);
+            ui::print_cluster_highlights(&clusters);
 
             // Show snapshot comparison if a previous snapshot exists
             let today = chrono::Utc::now().format("%Y-%m-%d").to_string();

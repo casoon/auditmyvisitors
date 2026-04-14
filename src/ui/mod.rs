@@ -362,6 +362,143 @@ pub fn print_management_summary(paragraphs: &[String]) {
     }
 }
 
+pub fn print_growth_highlights(report: &GrowthReport) {
+    if report.top_growing_pages.is_empty()
+        && report.top_declining_pages.is_empty()
+        && report.channel_growth.is_empty()
+        && report.new_queries.is_empty()
+    {
+        return;
+    }
+
+    println!("{}", "GROWTH HIGHLIGHTS".bold().underline());
+
+    if let Some(top) = report.top_growing_pages.first() {
+        println!(
+            "  Strongest page growth: {} ({:+.0} sessions, {:+.0}%)",
+            shorten_url(&top.label, 50).green(),
+            top.delta,
+            top.delta_pct
+        );
+    }
+
+    if let Some(drop) = report.top_declining_pages.first() {
+        println!(
+            "  Biggest page decline: {} ({:+.0} sessions, {:+.0}%)",
+            shorten_url(&drop.label, 50).red(),
+            drop.delta,
+            drop.delta_pct
+        );
+    }
+
+    if let Some(channel) = report.channel_growth.iter().max_by_key(|c| c.delta) {
+        if channel.delta > 0 {
+            println!(
+                "  Fastest channel growth: {} ({:+} sessions, {:+.0}%)",
+                channel.channel.cyan(),
+                channel.delta,
+                channel.delta_pct
+            );
+        }
+    }
+
+    if !report.new_queries.is_empty() {
+        let new_clicks: f64 = report.new_queries.iter().map(|q| q.clicks).sum();
+        println!(
+            "  New search demand: {} new queries generated {:.0} clicks",
+            report.new_queries.len(),
+            new_clicks
+        );
+    }
+
+    println!();
+}
+
+pub fn print_trend_highlights(report: &TrendsReport) {
+    if report.weeks.is_empty() && report.ranking_jumps.is_empty() {
+        return;
+    }
+
+    println!("{}", "TREND HIGHLIGHTS".bold().underline());
+
+    if report.weeks.len() >= 2 {
+        let prev = &report.weeks[report.weeks.len() - 2];
+        let last = report.weeks.last().unwrap();
+        let sessions_pct = crate::helpers::pct_change(prev.sessions as f64, last.sessions as f64);
+        let clicks_pct = crate::helpers::pct_change(prev.clicks, last.clicks);
+        println!(
+            "  Last week vs previous: sessions {:+.0}%, clicks {:+.0}%",
+            sessions_pct,
+            clicks_pct
+        );
+    }
+
+    if let Some(best) = report.ranking_jumps.iter().filter(|r| r.delta < 0.0).min_by(|a, b| {
+        a.delta.partial_cmp(&b.delta).unwrap_or(std::cmp::Ordering::Equal)
+    }) {
+        println!(
+            "  Biggest ranking jump: {} ({:.1} -> {:.1})",
+            shorten_url(&best.label, 45).green(),
+            best.previous,
+            best.current
+        );
+    }
+
+    if let Some(worst) = report.ranking_jumps.iter().filter(|r| r.delta > 0.0).max_by(|a, b| {
+        a.delta.partial_cmp(&b.delta).unwrap_or(std::cmp::Ordering::Equal)
+    }) {
+        println!(
+            "  Biggest ranking loss: {} ({:.1} -> {:.1})",
+            shorten_url(&worst.label, 45).red(),
+            worst.previous,
+            worst.current
+        );
+    }
+
+    println!();
+}
+
+pub fn print_cluster_highlights(report: &ClustersReport) {
+    if report.clusters.is_empty() {
+        return;
+    }
+
+    println!("{}", "CLUSTER HIGHLIGHTS".bold().underline());
+
+    if let Some(top) = report.clusters.first() {
+        println!(
+            "  Strongest topic: {} ({} sessions across {} pages)",
+            top.name.cyan(),
+            format_number(top.sessions),
+            top.pages
+        );
+    }
+
+    if let Some(best) = report
+        .clusters
+        .iter()
+        .filter(|c| c.ctr_potential > 0.0)
+        .max_by(|a, b| a.ctr_potential.partial_cmp(&b.ctr_potential).unwrap_or(std::cmp::Ordering::Equal))
+    {
+        println!(
+            "  Best optimization cluster: {} (~{:.0} additional clicks at optimal CTR)",
+            best.name.yellow(),
+            best.ctr_potential
+        );
+    }
+
+    if let Some(hub) = report.clusters.iter().find(|c| c.pages <= 1 && c.queries >= 5) {
+        println!(
+            "  Expansion candidate: {} ({} queries, {} page)",
+            hub.name.blue(),
+            hub.queries,
+            hub.pages
+        );
+    }
+
+    println!();
+}
+
 // ─── Insights / Recommendations ──────────────────────────────────────────────
 
 fn print_insights(insights: &[crate::domain::Insight]) {
