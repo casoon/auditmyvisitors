@@ -12,6 +12,7 @@ mod intent;
 mod interactive;
 mod narrative;
 mod opportunities;
+mod page_audit;
 mod reports;
 mod snapshots;
 mod storage;
@@ -455,7 +456,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
             }
         }
 
-        ExportAction::Pdf { days, output } => {
+        ExportAction::Pdf { days, limit, output } => {
             let token = auth::ensure_valid_token().await
                 .context("Please log in first: auditmyvisitors auth login")?;
 
@@ -465,7 +466,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
 
             let (overview, top_pages) = tokio::join!(
                 reports::overview::build(config, &token, days),
-                reports::top_pages::build(config, &token, days, 15, "sessions"),
+                reports::top_pages::build(config, &token, days, 500, "sessions"),
             );
             let overview = overview?;
             let top_pages = top_pages?;
@@ -491,7 +492,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                     .with_context(|| format!("Cannot create directory {}", parent.display()))?;
             }
 
-            let vm = export::builder::build_view_model(&overview, &top_pages);
+            let vm = export::builder::build_view_model(&overview, &top_pages, limit);
             export::pdf::generate(&vm, &path).context("PDF export failed")?;
 
             pb.finish_and_clear();

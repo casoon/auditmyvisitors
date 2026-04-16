@@ -276,22 +276,210 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
     b = b.add_component(PageBreak::new());
 
     // ════════════════════════════════════════════════════════════════════════
-    // 6. TOP PAGES
+    // 6. PAGE PERFORMANCE
     // ════════════════════════════════════════════════════════════════════════
 
-    b = b.add_component(Section::new("Top Pages").with_level(1));
-    if !vm.top_pages.is_empty() {
+    b = b.add_component(Section::new("Page Performance").with_level(1));
+
+    // ── 6a. All pages (sessions-sorted, up to limit) ─────────────────────────
+    if !vm.all_pages.is_empty() {
+        let title = format!("Top {} Pages by Sessions", vm.all_pages.len());
         let mut pages_table = AuditTable::new(vec![
-            TableColumn::new("Page").with_width("40%"),
-            TableColumn::new("Sessions").with_width("15%"),
-            TableColumn::new("Organic").with_width("15%"),
-            TableColumn::new("Clicks").with_width("15%"),
-            TableColumn::new("Pos.").with_width("15%"),
-        ]).with_title("Pages by Traffic");
-        for p in &vm.top_pages {
-            pages_table = pages_table.add_row(vec![p.url.clone(), p.sessions.clone(), p.organic.clone(), p.clicks.clone(), p.position.clone()]);
+            TableColumn::new("Page").with_width("26%"),
+            TableColumn::new("Sessions").with_width("9%"),
+            TableColumn::new("Organic").with_width("8%"),
+            TableColumn::new("Bounce").with_width("8%"),
+            TableColumn::new("Eng.").with_width("8%"),
+            TableColumn::new("Impr.").with_width("8%"),
+            TableColumn::new("Clicks").with_width("8%"),
+            TableColumn::new("CTR").with_width("7%"),
+            TableColumn::new("Pos.").with_width("7%"),
+            TableColumn::new("Top Queries").with_width("11%"),
+        ]).with_title(&title);
+        for p in &vm.all_pages {
+            pages_table = pages_table.add_row(vec![
+                p.url.clone(),
+                p.sessions.clone(),
+                p.organic_share.clone(),
+                p.bounce.clone(),
+                p.engagement.clone(),
+                p.impressions.clone(),
+                p.clicks.clone(),
+                p.ctr.clone(),
+                p.position.clone(),
+                p.queries.clone(),
+            ]);
         }
         b = b.add_component(pages_table);
+    }
+
+    b = b.add_component(PageBreak::new());
+    b = b.add_component(Section::new("Focused Analyses").with_level(2));
+
+    // ── 6b. Top 20 Strengths ─────────────────────────────────────────────────
+    if !vm.top_pages.is_empty() {
+        b = b.add_component(
+            Callout::info(
+                "Pages ranking in position 1–10 with engagement ≥ 45%. \
+                 These are your traffic assets — expand their internal linking and CTR."
+            ).with_title("Top 20 Strengths: Pos 1–10, Good Engagement")
+        );
+        let mut pages_table = AuditTable::new(vec![
+            TableColumn::new("Page").with_width("30%"),
+            TableColumn::new("Sessions").with_width("10%"),
+            TableColumn::new("Pos.").with_width("8%"),
+            TableColumn::new("CTR").with_width("8%"),
+            TableColumn::new("Engagement").with_width("10%"),
+            TableColumn::new("Issue").with_width("14%"),
+            TableColumn::new("Top Queries").with_width("20%"),
+        ]).with_title("Strengths");
+        for p in &vm.top_pages {
+            pages_table = pages_table.add_row(vec![
+                p.url.clone(),
+                p.sessions.clone(),
+                p.position.clone(),
+                p.ctr.clone(),
+                p.engagement.clone(),
+                p.diagnosis.clone(),
+                p.queries.clone(),
+            ]);
+        }
+        b = b.add_component(pages_table);
+    }
+
+    // ── 6c. Top 20 Weaknesses ─────────────────────────────────────────────────
+    if !vm.weakest_pages.is_empty() {
+        b = b.add_component(
+            Callout::warning(
+                "Pages with high impressions but poor CTR, or high traffic but immediate bounce. \
+                 Fix title, meta description, or content opening."
+            ).with_title("Top 20 Weaknesses: Fix Title / Content")
+        );
+        let mut weak_table = AuditTable::new(vec![
+            TableColumn::new("Page").with_width("28%"),
+            TableColumn::new("Sessions").with_width("9%"),
+            TableColumn::new("Bounce").with_width("8%"),
+            TableColumn::new("Eng.").with_width("8%"),
+            TableColumn::new("Impr.").with_width("9%"),
+            TableColumn::new("CTR").with_width("8%"),
+            TableColumn::new("Pos.").with_width("8%"),
+            TableColumn::new("Issue").with_width("12%"),
+            TableColumn::new("Queries").with_width("10%"),
+        ]).with_title("Weaknesses");
+        for p in &vm.weakest_pages {
+            weak_table = weak_table.add_row(vec![
+                p.url.clone(),
+                p.sessions.clone(),
+                p.bounce.clone(),
+                p.engagement.clone(),
+                p.impressions.clone(),
+                p.ctr.clone(),
+                p.position.clone(),
+                p.diagnosis.clone(),
+                p.queries.clone(),
+            ]);
+        }
+        b = b.add_component(weak_table);
+    }
+
+    // ── 6d. Click-Gap pages ───────────────────────────────────────────────────
+    if !vm.click_gap_pages.is_empty() {
+        b = b.add_component(
+            Callout::warning(
+                "Position 4–15, CTR < 2%, Impressions > 100. \
+                 Improving title and meta description can generate clicks immediately."
+            ).with_title(&format!("Click-Gap: {} Pages with Pos 4–15 and CTR < 2%", vm.click_gap_pages.len()))
+        );
+        let mut gap_table = AuditTable::new(vec![
+            TableColumn::new("Page").with_width("32%"),
+            TableColumn::new("Impr.").with_width("10%"),
+            TableColumn::new("CTR").with_width("9%"),
+            TableColumn::new("Pos.").with_width("9%"),
+            TableColumn::new("Clicks").with_width("9%"),
+            TableColumn::new("Sessions").with_width("9%"),
+            TableColumn::new("Top Queries").with_width("22%"),
+        ]).with_title("Click-Gap Pages");
+        for p in &vm.click_gap_pages {
+            gap_table = gap_table.add_row(vec![
+                p.url.clone(),
+                p.impressions.clone(),
+                p.ctr.clone(),
+                p.position.clone(),
+                p.clicks.clone(),
+                p.sessions.clone(),
+                p.queries.clone(),
+            ]);
+        }
+        b = b.add_component(gap_table);
+    }
+
+    // ── 6e. Isolated articles ─────────────────────────────────────────────────
+    if !vm.isolated_pages.is_empty() {
+        b = b.add_component(
+            Callout::warning(
+                "High traffic, but no internal link click to any service page. \
+                 Add a contextual ServiceHint or internal link."
+            ).with_title("Top 10 Isolated Articles: Traffic Without Conversion Path")
+        );
+        let mut isolated_table = AuditTable::new(vec![
+            TableColumn::new("Page").with_width("40%"),
+            TableColumn::new("Sessions").with_width("12%"),
+            TableColumn::new("Eng.").with_width("10%"),
+            TableColumn::new("Clicks").with_width("10%"),
+            TableColumn::new("Queries").with_width("28%"),
+        ]).with_title("Isolated Articles");
+        for p in &vm.isolated_pages {
+            isolated_table = isolated_table.add_row(vec![
+                p.url.clone(),
+                p.sessions.clone(),
+                p.engagement.clone(),
+                p.clicks.clone(),
+                p.queries.clone(),
+            ]);
+        }
+        b = b.add_component(isolated_table);
+    }
+
+    // ── 6f. Invisible pages (traffic but no GSC impressions) ─────────────────
+    if !vm.invisible_pages.is_empty() {
+        b = b.add_component(
+            Callout::info(
+                "These pages receive traffic (direct/referral/social) but have zero impressions \
+                 in Search Console — they are not ranking in Google at all. \
+                 Check indexing status and consider improving content or internal linking."
+            ).with_title(&format!("{} Pages: Traffic but Not Indexed / Not Ranking", vm.invisible_pages.len()))
+        );
+        let mut inv_table = AuditTable::new(vec![
+            TableColumn::new("Page").with_width("45%"),
+            TableColumn::new("Sessions").with_width("15%"),
+            TableColumn::new("Organic").with_width("12%"),
+            TableColumn::new("Bounce").with_width("12%"),
+            TableColumn::new("Engagement").with_width("16%"),
+        ]).with_title("Invisible in Search");
+        for p in &vm.invisible_pages {
+            inv_table = inv_table.add_row(vec![
+                p.url.clone(),
+                p.sessions.clone(),
+                p.organic_share.clone(),
+                p.bounce.clone(),
+                p.engagement.clone(),
+            ]);
+        }
+        b = b.add_component(inv_table);
+    }
+
+    // ── 6g. Top Page Diagnoses ────────────────────────────────────────────────
+    if !vm.top_page_diagnoses.is_empty() {
+        b = b.add_component(Section::new("Recommended Next Steps (Top 10 Strengths)").with_level(2));
+        for page in &vm.top_page_diagnoses {
+            b = b.add_component(
+                Callout::info(format!(
+                    "Top queries: {}\n\nNext step: {}",
+                    page.queries, page.recommendation
+                ))
+                .with_title(format!("{} — {}", page.url, page.diagnosis))
+            );
+        }
     }
 
     b = b.add_component(PageBreak::new());

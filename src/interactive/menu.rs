@@ -33,10 +33,26 @@ fn ask_days() -> anyhow::Result<u32> {
     }
 }
 
+// ─── Result limit ───────────────────────────────────────────────────────────
+
+fn ask_limit(label: &str) -> anyhow::Result<usize> {
+    let options = vec!["20 (min)", "50", "100", "200 (max)"];
+    let choice = inquire::Select::new(label, options)
+        .with_starting_cursor(0)
+        .prompt()?;
+    Ok(match choice {
+        "50"       => 50,
+        "100"      => 100,
+        "200 (max)" => 200,
+        _          => 20,
+    })
+}
+
 // ─── Main menu ──────────────────────────────────────────────────────────────
 
 const MENU_REPORT: &str = "Run full report";
-const MENU_PAGE: &str = "Page performance: top 20 / weakest 20";
+const MENU_PAGE: &str = "Page performance: top / weakest pages";
+const MENU_PAGE_DETAIL: &str = "Page detail (single URL)";
 const MENU_COMPARE: &str = "Before/after comparison";
 const MENU_EXPORT: &str = "Export…";
 const MENU_PROPERTY: &str = "Switch property";
@@ -58,6 +74,7 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
         let menu = vec![
             MENU_REPORT,
             MENU_PAGE,
+            MENU_PAGE_DETAIL,
             MENU_COMPARE,
             MENU_EXPORT,
             MENU_PROPERTY,
@@ -76,6 +93,7 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
         match choice {
             MENU_REPORT => run_full_report(config, &token, days).await,
             MENU_PAGE => run_page_performance(config, &token, days).await,
+            MENU_PAGE_DETAIL => run_page_detail(config, &token, days).await,
             MENU_COMPARE => run_compare(config, &token).await,
             MENU_EXPORT => run_export(config, &token, days).await,
             MENU_PROPERTY => {
@@ -140,7 +158,7 @@ async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::
 
     // 4. Top Pages
     let pb = spinner("Loading top pages…");
-    let top_pages = reports::top_pages::build(config, token, days, 20, "sessions").await?;
+    let top_pages = reports::top_pages::build(config, token, days, 500, "sessions").await?;
     pb.finish_and_clear();
     ui::print_top_pages(&top_pages);
 
@@ -211,14 +229,16 @@ async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::
 
     // Offer export
     let export_opts = vec![
-        "Continue (no export)",
-        "Save as PDF",
+        "Save as PDF (recommended)",
         "Save as JSON",
+        "Continue without saving",
     ];
-    let export_choice = inquire::Select::new("Export report?", export_opts).prompt()?;
+    let export_choice = inquire::Select::new("What should be saved from this report?", export_opts)
+        .with_starting_cursor(0)
+        .prompt()?;
 
     match export_choice {
-        "Save as PDF" => {
+        "Save as PDF (recommended)" => {
             export_pdf(config, &overview, &top_pages).await?;
         }
         "Save as JSON" => {
@@ -233,6 +253,8 @@ async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::
 // ─── Page Performance ───────────────────────────────────────────────────────
 
 async fn run_page_performance(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
+    let limit = ask_limit("How many pages to show (top / weakest)?")?;
+
     let pb = spinner(&format!("Loading page performance for last {} days…", days));
     let full_report = reports::top_pages::build(config, token, days, 500, "sessions").await?;
     pb.finish_and_clear();
@@ -240,12 +262,12 @@ async fn run_page_performance(config: &AppConfig, token: &str, days: u32) -> any
     let top_report = TopPagesReport {
         property_name: full_report.property_name.clone(),
         date_range: full_report.date_range.clone(),
-        pages: full_report.pages.iter().take(20).cloned().collect(),
+        pages: full_report.pages.iter().take(limit).cloned().collect(),
         insights: full_report.insights.clone(),
     };
     ui::print_top_pages(&top_report);
 
-    let weakest_pages = weakest_pages(&full_report.pages, 20);
+    let weakest_pages = weakest_pages(&full_report.pages, limit);
     let weakest_report = TopPagesReport {
         property_name: full_report.property_name,
         date_range: full_report.date_range,
@@ -253,6 +275,19 @@ async fn run_page_performance(config: &AppConfig, token: &str, days: u32) -> any
         insights: vec![],
     };
     ui::print_weakest_pages(&weakest_report);
+
+    Ok(())
+}
+
+async fn run_page_detail(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
+    let url: String = inquire::Text::new("Which page should be analyzed?")
+        .with_placeholder("/blog/my-article")
+        .prompt()?;
+
+    let pb = spinner(&format!("Loading details for {}…", url));
+    let report = reports::page_detail::build(config, token, &url, days).await?;
+    pb.finish_and_clear();
+    ui::print_page_detail(&report);
 
     Ok(())
 }
@@ -361,7 +396,7 @@ async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Resul
             let pb = spinner("Loading data…");
             let (overview, top_pages) = tokio::join!(
                 reports::overview::build(config, token, days),
-                reports::top_pages::build(config, token, days, 15, "sessions"),
+                reports::top_pages::build(config, token, days, 500, "sessions"),
             );
             let overview = overview?;
             let top_pages = top_pages?;
@@ -510,7 +545,7 @@ async fn export_pdf(
             .with_context(|| format!("Cannot create directory {}", parent.display()))?;
     }
 
-    let vm = export::builder::build_view_model(overview, top_pages);
+    let vm = export::builder::build_view_model(overview, top_pages, 20);
     export::pdf::generate(&vm, &path).context("PDF export failed")?;
 
     println!("{} PDF saved: {}", "✓".green().bold(), path.cyan());

@@ -1,6 +1,7 @@
 //! Transforms domain reports into a flat ViewModel for PDF rendering.
 
 use crate::domain::{InsightSeverity, Opportunity, SiteOverviewReport, TopPagesReport};
+use crate::page_audit;
 
 pub struct ReportViewModel {
     pub property_name: String,
@@ -32,8 +33,14 @@ pub struct ReportViewModel {
     pub top_queries: Vec<QueryRow>,
     pub opportunity_queries: Vec<QueryRow>,
 
-    // Top pages
-    pub top_pages: Vec<PageRow>,
+    // Page tables
+    pub all_pages: Vec<PageRow>,         // sessions-sorted, up to limit — the main list
+    pub top_pages: Vec<PageRow>,         // strength-scored, up to 20
+    pub weakest_pages: Vec<PageRow>,     // weakness-scored, up to 20
+    pub isolated_pages: Vec<PageRow>,    // isolated-scored, up to 10
+    pub click_gap_pages: Vec<PageRow>,   // Pos 4–15, CTR < 2%, up to 50
+    pub invisible_pages: Vec<PageRow>,   // sessions > 10 but 0 GSC impressions, up to 50
+    pub top_page_diagnoses: Vec<PageDiagnosisRow>,
 
     // Opportunities (grouped, scored)
     pub opportunities: Vec<OpportunityRow>,
@@ -61,8 +68,23 @@ pub struct QueryRow   {
     pub ctr: String,   pub position: String,
 }
 pub struct PageRow {
-    pub url: String,  pub sessions: String, pub organic: String,
-    pub clicks: String, pub position: String,
+    pub url: String,
+    pub sessions: String,
+    pub organic_share: String,
+    pub bounce: String,
+    pub engagement: String,
+    pub impressions: String,
+    pub clicks: String,
+    pub ctr: String,
+    pub position: String,
+    pub queries: String,
+    pub diagnosis: String,
+}
+pub struct PageDiagnosisRow {
+    pub url: String,
+    pub diagnosis: String,
+    pub queries: String,
+    pub recommendation: String,
 }
 pub struct OpportunityRow {
     pub score: String,
@@ -83,6 +105,7 @@ pub struct InsightRow {
 pub fn build_view_model(
     overview: &SiteOverviewReport,
     top_pages: &TopPagesReport,
+    limit: usize,
 ) -> ReportViewModel {
     let t = &overview.traffic;
     let s = &overview.search;
@@ -168,10 +191,66 @@ pub fn build_view_model(
         .collect();
 
     // ── Pages ─────────────────────────────────────────────────────────────────
-    let top_pages: Vec<PageRow> = top_pages.pages.iter().take(15).map(|p| PageRow {
-        url: shorten_url(&p.url), sessions: fmt_num(p.sessions),
-        organic: fmt_num(p.organic_sessions), clicks: format!("{:.0}", p.search.clicks),
-        position: if p.search.average_position > 0.0 { format!("{:.1}", p.search.average_position) } else { "-".into() },
+    let tracking_enabled = top_pages.pages.iter().any(|p| p.internal_link_clicks > 0 || p.service_hint_clicks > 0);
+
+    let page_row = |p: &crate::domain::PageSummary| -> PageRow {
+        let organic_pct = if p.sessions > 0 {
+            format!("{:.0}%", p.organic_sessions as f64 / p.sessions as f64 * 100.0)
+        } else { "0%".into() };
+        PageRow {
+            url:          shorten_url(&p.url),
+            sessions:     fmt_num(p.sessions),
+            organic_share: organic_pct,
+            bounce:       format!("{:.0}%", p.bounce_rate * 100.0),
+            engagement:   format!("{:.0}%", p.engagement_rate * 100.0),
+            impressions:  format!("{:.0}", p.search.impressions),
+            clicks:       format!("{:.0}", p.search.clicks),
+            ctr:          format!("{:.1}%", p.search.ctr * 100.0),
+            position:     if p.search.average_position > 0.0 { format!("{:.1}", p.search.average_position) } else { "-".into() },
+            queries:      page_audit::top_query_summary(p),
+            diagnosis:    page_audit::issue_label(p, tracking_enabled),
+        }
+    };
+
+    // All pages sorted by sessions (main comprehensive list, up to limit)
+    let all_pages: Vec<PageRow> = top_pages.pages.iter()
+        .take(limit)
+        .map(|p| page_row(p))
+        .collect();
+
+    // Scored analyses — capped at 20 / 20 / 10 regardless of limit
+    let strongest  = page_audit::ranking(&top_pages.pages, 20, |p| page_audit::strength_score(p, tracking_enabled));
+    let weakest    = page_audit::ranking(&top_pages.pages, 20, page_audit::weakness_score);
+    let isolated   = page_audit::ranking(&top_pages.pages, 10, |p| page_audit::isolated_score(p, tracking_enabled));
+
+    let top_pages_rows: Vec<PageRow>   = strongest.iter().map(|p| page_row(p)).collect();
+    let weakest_pages: Vec<PageRow>    = weakest.iter().map(|p| page_row(p)).collect();
+    let isolated_pages: Vec<PageRow>   = isolated.iter().map(|p| page_row(p)).collect();
+
+    // Click-Gap: Pos 4–15, CTR < 2%, Impressions > 100
+    let mut click_gap: Vec<&crate::domain::PageSummary> = top_pages.pages.iter()
+        .filter(|p| {
+            p.search.average_position >= 4.0
+                && p.search.average_position <= 15.0
+                && p.search.ctr < 0.02
+                && p.search.impressions > 100.0
+        })
+        .collect();
+    click_gap.sort_by(|a, b| b.search.impressions.partial_cmp(&a.search.impressions).unwrap_or(std::cmp::Ordering::Equal));
+    let click_gap_pages: Vec<PageRow> = click_gap.iter().take(50).map(|p| page_row(p)).collect();
+
+    // Invisible: traffic but zero GSC impressions
+    let mut invisible: Vec<&crate::domain::PageSummary> = top_pages.pages.iter()
+        .filter(|p| p.search.impressions == 0.0 && p.sessions > 10)
+        .collect();
+    invisible.sort_by(|a, b| b.sessions.cmp(&a.sessions));
+    let invisible_pages: Vec<PageRow> = invisible.iter().take(50).map(|p| page_row(p)).collect();
+
+    let top_page_diagnoses: Vec<PageDiagnosisRow> = strongest.iter().take(10).map(|p| PageDiagnosisRow {
+        url: shorten_url(&p.url),
+        diagnosis: page_audit::issue_label(p, tracking_enabled),
+        queries: page_audit::top_query_summary(p),
+        recommendation: page_audit::recommendation(p, tracking_enabled),
     }).collect();
     let mut all_insights: Vec<InsightRow> = combined.into_iter().map(|i| InsightRow {
         severity: i.severity.clone(), headline: i.headline.clone(), explanation: i.explanation.clone(),
@@ -202,7 +281,13 @@ pub fn build_view_model(
         search_ctr:         format!("{:.1}%", s.ctr * 100.0),
         top_queries,
         opportunity_queries,
-        top_pages,
+        all_pages,
+        top_pages: top_pages_rows,
+        weakest_pages,
+        isolated_pages,
+        click_gap_pages,
+        invisible_pages,
+        top_page_diagnoses,
         opportunities,
         insights: all_insights,
     }

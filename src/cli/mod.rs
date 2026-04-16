@@ -203,6 +203,10 @@ pub enum ExportAction {
         #[arg(long, short = 'd')]
         days: Option<u32>,
 
+        /// How many top / weakest pages to include (default: 20, max: 200)
+        #[arg(long, short = 'n', default_value = "20")]
+        limit: usize,
+
         /// Output file path (default: ./output/<property>-YYYY-MM-DD.pdf)
         #[arg(long, short = 'o')]
         output: Option<String>,
