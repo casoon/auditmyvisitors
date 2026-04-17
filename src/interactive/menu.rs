@@ -3,7 +3,6 @@ use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 
 use crate::config::AppConfig;
-use crate::domain::{PageSummary, TopPagesReport};
 use crate::{auth, export, narrative, reports, snapshots, ui};
 
 // ─── Time range ─────────────────────────────────────────────────────────────
@@ -33,27 +32,9 @@ fn ask_days() -> anyhow::Result<u32> {
     }
 }
 
-// ─── Result limit ───────────────────────────────────────────────────────────
-
-fn ask_limit(label: &str) -> anyhow::Result<usize> {
-    let options = vec!["20 (min)", "50", "100", "200 (max)"];
-    let choice = inquire::Select::new(label, options)
-        .with_starting_cursor(0)
-        .prompt()?;
-    Ok(match choice {
-        "50"       => 50,
-        "100"      => 100,
-        "200 (max)" => 200,
-        _          => 20,
-    })
-}
-
 // ─── Main menu ──────────────────────────────────────────────────────────────
 
-const MENU_REPORT: &str = "Run full report";
-const MENU_PAGE: &str = "Page performance: top / weakest pages";
-const MENU_PAGE_DETAIL: &str = "Page detail (single URL)";
-const MENU_COMPARE: &str = "Before/after comparison";
+const MENU_PAGE_DETAIL: &str = "Drill into a page…";
 const MENU_EXPORT: &str = "Export…";
 const MENU_PROPERTY: &str = "Switch property";
 const MENU_EXIT: &str = "Exit";
@@ -72,10 +53,7 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
 
     loop {
         let menu = vec![
-            MENU_REPORT,
-            MENU_PAGE,
             MENU_PAGE_DETAIL,
-            MENU_COMPARE,
             MENU_EXPORT,
             MENU_PROPERTY,
             MENU_EXIT,
@@ -91,10 +69,7 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
         }
 
         match choice {
-            MENU_REPORT => run_full_report(config, &token, days).await,
-            MENU_PAGE => run_page_performance(config, &token, days).await,
             MENU_PAGE_DETAIL => run_page_detail(config, &token, days).await,
-            MENU_COMPARE => run_compare(config, &token).await,
             MENU_EXPORT => run_export(config, &token, days).await,
             MENU_PROPERTY => {
                 super::setup::ensure_ready(config).await?;
@@ -250,35 +225,6 @@ async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::
     Ok(())
 }
 
-// ─── Page Performance ───────────────────────────────────────────────────────
-
-async fn run_page_performance(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
-    let limit = ask_limit("How many pages to show (top / weakest)?")?;
-
-    let pb = spinner(&format!("Loading page performance for last {} days…", days));
-    let full_report = reports::top_pages::build(config, token, days, 500, "sessions").await?;
-    pb.finish_and_clear();
-
-    let top_report = TopPagesReport {
-        property_name: full_report.property_name.clone(),
-        date_range: full_report.date_range.clone(),
-        pages: full_report.pages.iter().take(limit).cloned().collect(),
-        insights: full_report.insights.clone(),
-    };
-    ui::print_top_pages(&top_report);
-
-    let weakest_pages = weakest_pages(&full_report.pages, limit);
-    let weakest_report = TopPagesReport {
-        property_name: full_report.property_name,
-        date_range: full_report.date_range,
-        pages: weakest_pages,
-        insights: vec![],
-    };
-    ui::print_weakest_pages(&weakest_report);
-
-    Ok(())
-}
-
 async fn run_page_detail(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
     let url: String = inquire::Text::new("Which page should be analyzed?")
         .with_placeholder("/blog/my-article")
@@ -288,94 +234,6 @@ async fn run_page_detail(config: &AppConfig, token: &str, days: u32) -> anyhow::
     let report = reports::page_detail::build(config, token, &url, days).await?;
     pb.finish_and_clear();
     ui::print_page_detail(&report);
-
-    Ok(())
-}
-
-fn weakest_pages(pages: &[PageSummary], limit: usize) -> Vec<PageSummary> {
-    let mut ranked: Vec<(f64, &PageSummary)> = pages
-        .iter()
-        .filter_map(|page| {
-            let score = page_weakness_score(page)?;
-            Some((score, page))
-        })
-        .collect();
-
-    ranked.sort_by(|a, b| {
-        b.0.partial_cmp(&a.0)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    ranked
-        .into_iter()
-        .take(limit)
-        .map(|(_, page)| page.clone())
-        .collect()
-}
-
-fn page_weakness_score(page: &PageSummary) -> Option<f64> {
-    if page.sessions < 20 && page.search.impressions < 200.0 {
-        return None;
-    }
-
-    let mut score = 0.0;
-
-    if page.engagement_rate < 0.30 && page.sessions >= 20 {
-        score += (0.30 - page.engagement_rate) * 200.0;
-    }
-
-    if page.bounce_rate > 0.70 && page.sessions >= 20 {
-        score += (page.bounce_rate - 0.70) * 120.0;
-    }
-
-    if page.search.impressions > 200.0
-        && page.search.average_position > 0.0
-        && page.search.average_position <= 10.0
-    {
-        let expected_ctr = crate::opportunities::expected_ctr(page.search.average_position);
-        if expected_ctr > page.search.ctr {
-            score += (expected_ctr - page.search.ctr) * page.search.impressions;
-        }
-    }
-
-    if page.search.impressions > 500.0 && page.search.clicks < 10.0 {
-        score += 20.0;
-    }
-
-    if page.search.average_position > 10.0 && page.search.average_position <= 20.0 && page.search.impressions > 200.0 {
-        score += 15.0;
-    }
-
-    if score <= 0.0 {
-        None
-    } else {
-        Some(score)
-    }
-}
-
-// ─── Compare ────────────────────────────────────────────────────────────────
-
-async fn run_compare(config: &AppConfig, token: &str) -> anyhow::Result<()> {
-    let since: String = inquire::Text::new("Change date (YYYY-MM-DD):")
-        .with_placeholder("2026-04-01")
-        .prompt()?;
-    let url: String = inquire::Text::new("URL (empty = entire site):")
-        .with_default("")
-        .prompt()?;
-    let url_opt = if url.is_empty() { None } else { Some(url.as_str()) };
-
-    let before: u32 = inquire::CustomType::new("Days before change date:")
-        .with_default(30)
-        .prompt()?;
-    let after: u32 = inquire::CustomType::new("Days after change date:")
-        .with_default(30)
-        .prompt()?;
-
-    let pb = spinner("Loading comparison data…");
-    let report =
-        reports::compare::build(config, token, url_opt, before, after, &since).await?;
-    pb.finish_and_clear();
-    ui::print_comparison(&report);
 
     Ok(())
 }
