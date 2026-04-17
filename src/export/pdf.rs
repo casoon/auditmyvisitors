@@ -391,7 +391,7 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
     if !vm.all_pages.is_empty() {
         let title = format!("Top {} Pages by Sessions", vm.all_pages.len());
         let mut pages_table = AuditTable::new(vec![
-            TableColumn::new("Page").with_width("26%"),
+            TableColumn::new("Page + Top Queries").with_width("37%"),
             TableColumn::new("Sessions").with_width("9%"),
             TableColumn::new("Organic").with_width("8%"),
             TableColumn::new("Bounce").with_width("8%"),
@@ -400,11 +400,15 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
             TableColumn::new("Clicks").with_width("8%"),
             TableColumn::new("CTR").with_width("7%"),
             TableColumn::new("Pos.").with_width("7%"),
-            TableColumn::new("Top Queries").with_width("11%"),
         ]).with_title(&title);
         for p in &vm.all_pages {
+            let page_cell = if p.queries.is_empty() || p.queries == "-" {
+                p.url.clone()
+            } else {
+                format!("{}\n{}", p.url, p.queries)
+            };
             pages_table = pages_table.add_row(vec![
-                p.url.clone(),
+                page_cell,
                 p.sessions.clone(),
                 p.organic_share.clone(),
                 p.bounce.clone(),
@@ -413,7 +417,6 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
                 p.clicks.clone(),
                 p.ctr.clone(),
                 p.position.clone(),
-                p.queries.clone(),
             ]);
         }
         b = b.add_component(pages_table);
