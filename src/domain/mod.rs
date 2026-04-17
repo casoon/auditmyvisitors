@@ -48,6 +48,8 @@ pub struct QueryRow {
     pub position: f64,
     #[serde(default)]
     pub intent: Option<Intent>,
+    #[serde(default)]
+    pub top_page: Option<String>,
 }
 
 // ─── Reports ─────────────────────────────────────────────────────────────────
@@ -89,7 +91,7 @@ pub struct TopPagesReport {
     pub insights: Vec<Insight>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PageSummary {
     pub url: String,
     pub sessions: i64,
@@ -100,6 +102,12 @@ pub struct PageSummary {
     pub avg_session_duration_secs: f64,
     pub new_user_share: f64,
     pub key_events: i64,
+    #[serde(default)]
+    pub scroll_events: i64,
+    #[serde(default)]
+    pub internal_link_clicks: i64,
+    #[serde(default)]
+    pub service_hint_clicks: i64,
     pub search: SearchPerformanceBreakdown,
 }
 
@@ -564,4 +572,38 @@ pub struct Recommendation {
     pub priority: u8, // 1 = highest
     pub headline: String,
     pub action: String,
+}
+
+// ─── Site Health (Sitemaps + URL Inspection) ──────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SitemapEntry {
+    pub url: String,
+    pub submitted_urls: i64,
+    pub indexed_urls: i64,
+    pub warnings: i64,
+    pub errors: i64,
+    pub last_submitted: Option<String>,
+    pub is_pending: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UrlInspectionResult {
+    pub url: String,
+    pub verdict: String,        // "PASS", "FAIL", "PARTIAL", "VERDICT_UNSPECIFIED"
+    pub coverage_state: String,
+    pub robots_allowed: bool,
+    pub indexing_allowed: bool,
+    pub last_crawl: Option<String>,
+    pub mobile_verdict: String,
+    pub canonical_ok: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiteHealthReport {
+    pub property_name: String,
+    pub sitemaps: Vec<SitemapEntry>,
+    pub total_submitted: i64,
+    pub total_indexed: i64,
+    pub url_inspections: Vec<UrlInspectionResult>,
 }

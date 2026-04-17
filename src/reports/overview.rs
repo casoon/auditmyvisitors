@@ -247,6 +247,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
                 ctr:         r.ctr,
                 position:    r.position,
                 intent:      None,
+                top_page:    None,
             })
             .collect();
 

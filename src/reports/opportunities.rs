@@ -76,6 +76,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             ctr: r.ctr,
             position: r.position,
             intent: None,
+            top_page: None,
         })
         .collect();
 
@@ -96,6 +97,9 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             avg_session_duration_secs: 0.0,
             new_user_share: 0.0,
             key_events: 0,
+            scroll_events: 0,
+            internal_link_clicks: 0,
+            service_hint_clicks: 0,
             search: SearchPerformanceBreakdown::default(),
         });
         entry.sessions += sessions;
@@ -211,4 +215,3 @@ fn build_summary(opportunities: &[crate::domain::Opportunity], total: f64) -> St
         total
     )
 }
-

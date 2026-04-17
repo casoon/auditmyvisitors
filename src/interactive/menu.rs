@@ -545,7 +545,7 @@ async fn export_pdf(
             .with_context(|| format!("Cannot create directory {}", parent.display()))?;
     }
 
-    let vm = export::builder::build_view_model(overview, top_pages, 20);
+    let vm = export::builder::build_view_model(overview, top_pages, None, None, 20);
     export::pdf::generate(&vm, &path).context("PDF export failed")?;
 
     println!("{} PDF saved: {}", "✓".green().bold(), path.cyan());

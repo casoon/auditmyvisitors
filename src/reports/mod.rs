@@ -12,3 +12,4 @@ pub mod devices;
 pub mod countries;
 pub mod growth;
 pub mod trends;
+pub mod site_health;

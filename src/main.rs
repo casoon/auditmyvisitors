@@ -464,12 +464,21 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
 
             let pb = spinner(&format!("Loading data for last {} days…", days));
 
-            let (overview, top_pages) = tokio::join!(
+            let (overview, top_pages, queries) = tokio::join!(
                 reports::overview::build(config, &token, days),
                 reports::top_pages::build(config, &token, days, 500, "sessions"),
+                reports::queries::build(config, &token, days, 500, "clicks"),
             );
             let overview = overview?;
             let top_pages = top_pages?;
+            let queries = queries.ok();
+
+            // Invisible pages (traffic but 0 GSC impressions) are prime candidates for URL inspection
+            let invisible: Vec<_> = top_pages.pages.iter()
+                .filter(|p| p.search.impressions == 0.0 && p.sessions > 10)
+                .cloned()
+                .collect();
+            let site_health = reports::site_health::build(config, &token, &invisible).await.ok();
 
             pb.set_message("Creating PDF…");
 
@@ -492,7 +501,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                     .with_context(|| format!("Cannot create directory {}", parent.display()))?;
             }
 
-            let vm = export::builder::build_view_model(&overview, &top_pages, limit);
+            let vm = export::builder::build_view_model(&overview, &top_pages, queries.as_ref(), site_health.as_ref(), limit);
             export::pdf::generate(&vm, &path).context("PDF export failed")?;
 
             pb.finish_and_clear();

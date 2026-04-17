@@ -31,7 +31,32 @@ pub async fn build(
         row_limit: Some(500),
     };
 
-    let resp = query(access_token, req).await?;
+    let req_pages = SearchAnalyticsRequest {
+        site_url: sc_url.to_string(),
+        start_date: helpers::days_ago(days),
+        end_date: helpers::yesterday(),
+        dimensions: vec!["query".into(), "page".into()],
+        page_filter: None,
+        row_limit: Some(5000),
+    };
+
+    let (resp, resp_pages) = tokio::join!(
+        query(access_token, req),
+        query(access_token, req_pages),
+    );
+    let resp = resp?;
+    let resp_pages = resp_pages?;
+
+    // Build query → best page map (lowest position wins)
+    let mut query_top_page: std::collections::HashMap<String, (String, f64)> = std::collections::HashMap::new();
+    for row in &resp_pages.rows {
+        let q = row.keys.first().cloned().unwrap_or_default();
+        let page = row.keys.get(1).cloned().unwrap_or_default();
+        let entry = query_top_page.entry(q).or_insert((page.clone(), row.position));
+        if row.position < entry.1 {
+            *entry = (page, row.position);
+        }
+    }
 
     let brand_terms = &config.report.brand_terms;
 
@@ -41,6 +66,7 @@ pub async fn build(
         .map(|r| {
             let q = r.keys.first().cloned().unwrap_or_default();
             let classified = intent::classify(&q, brand_terms);
+            let top_page = query_top_page.get(&q).map(|(p, _)| p.clone());
             QueryRow {
                 query: q,
                 clicks: r.clicks,
@@ -48,6 +74,7 @@ pub async fn build(
                 ctr: r.ctr,
                 position: r.position,
                 intent: Some(classified),
+                top_page,
             }
         })
         .collect();

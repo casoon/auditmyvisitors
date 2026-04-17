@@ -1,7 +1,7 @@
 //! Shared helper functions used across reports, insights, and exports.
 
 use std::collections::HashMap;
-use crate::domain::{PageSummary, SearchPerformanceBreakdown};
+use crate::domain::{PageSummary, QueryRow, SearchPerformanceBreakdown};
 
 // ─── Date helpers ────────────────────────────────────────────────────────────
 
@@ -74,6 +74,39 @@ pub fn merge_sc_into_page_map(
                     average_position: row.position,
                     top_queries: vec![],
                 };
+            }
+        }
+    }
+}
+
+pub fn merge_sc_queries_into_page_map(
+    sc_rows: &[crate::google::search_console::SearchAnalyticsRow],
+    page_map: &mut HashMap<String, PageSummary>,
+) {
+    for row in sc_rows {
+        let page_url = row.keys.first().cloned().unwrap_or_default();
+        let query = row.keys.get(1).cloned().unwrap_or_default();
+        if query.is_empty() {
+            continue;
+        }
+
+        if let Some(key) = match_sc_url_to_path(&page_url, page_map) {
+            if let Some(entry) = page_map.get_mut(&key) {
+                entry.search.top_queries.push(QueryRow {
+                    query,
+                    clicks: row.clicks,
+                    impressions: row.impressions,
+                    ctr: row.ctr,
+                    position: row.position,
+                    intent: None,
+                    top_page: None,
+                });
+                entry.search.top_queries.sort_by(|a, b| {
+                    b.clicks
+                        .partial_cmp(&a.clicks)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                });
+                entry.search.top_queries.truncate(5);
             }
         }
     }

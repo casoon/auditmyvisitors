@@ -273,6 +273,112 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
         b = b.add_component(opp_q);
     }
 
+    // ── Keyword table ────────────────────────────────────────────────────────
+    if !vm.keyword_rows.is_empty() {
+        b = b.add_component(PageBreak::new());
+        b = b.add_component(Section::new("Keywords").with_level(2));
+        let title = format!("Found Keywords ({}) — sorted by clicks", vm.keyword_rows.len());
+        let mut kw_table = AuditTable::new(vec![
+            TableColumn::new("#").with_width("5%"),
+            TableColumn::new("Keyword").with_width("25%"),
+            TableColumn::new("Clicks").with_width("9%"),
+            TableColumn::new("Impressions").with_width("11%"),
+            TableColumn::new("CTR").with_width("8%"),
+            TableColumn::new("Ø Position").with_width("10%"),
+            TableColumn::new("Top Page").with_width("32%"),
+        ]).with_title(&title);
+        for row in &vm.keyword_rows {
+            kw_table = kw_table.add_row(vec![
+                row.rank.clone(),
+                row.keyword.clone(),
+                row.clicks.clone(),
+                row.impressions.clone(),
+                row.ctr.clone(),
+                row.position.clone(),
+                row.top_page.clone(),
+            ]);
+        }
+        b = b.add_component(kw_table);
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // SITE HEALTH (Sitemaps + URL Inspection)
+    // ════════════════════════════════════════════════════════════════════════
+
+    if !vm.sitemap_rows.is_empty() || !vm.url_inspection_rows.is_empty() {
+        b = b.add_component(PageBreak::new());
+        b = b.add_component(Section::new("Site Health").with_level(1));
+
+        // KPI cards
+        if vm.sitemap_total_submitted != "–" {
+            let mut health_grid = Grid::new(3);
+            health_grid = add_metric(health_grid, "Submitted URLs", &vm.sitemap_total_submitted, "#0369a1");
+            health_grid = add_metric(health_grid, "Indexed URLs",   &vm.sitemap_total_indexed,   "#16a34a");
+            health_grid = add_metric(health_grid, "Indexation Rate",&vm.sitemap_indexation_rate, "#7c3aed");
+            b = b.add_component(health_grid);
+        }
+
+        // Sitemaps table
+        if !vm.sitemap_rows.is_empty() {
+            b = b.add_component(Section::new("Sitemaps").with_level(2));
+            let mut sm_table = AuditTable::new(vec![
+                TableColumn::new("Sitemap URL").with_width("32%"),
+                TableColumn::new("Submitted").with_width("11%"),
+                TableColumn::new("Indexed").with_width("11%"),
+                TableColumn::new("Rate").with_width("9%"),
+                TableColumn::new("Warn").with_width("7%"),
+                TableColumn::new("Errors").with_width("7%"),
+                TableColumn::new("Last Submitted").with_width("13%"),
+                TableColumn::new("Status").with_width("10%"),
+            ]).with_title("Sitemap Overview");
+            for row in &vm.sitemap_rows {
+                sm_table = sm_table.add_row(vec![
+                    row.url.clone(),
+                    row.submitted.clone(),
+                    row.indexed.clone(),
+                    row.rate.clone(),
+                    row.warnings.clone(),
+                    row.errors.clone(),
+                    row.last_submitted.clone(),
+                    row.status.clone(),
+                ]);
+            }
+            b = b.add_component(sm_table);
+        }
+
+        // URL Inspection table
+        if !vm.url_inspection_rows.is_empty() {
+            b = b.add_component(Section::new("URL Inspection (Pages with Traffic but Not Ranking)").with_level(2));
+            b = b.add_component(
+                Callout::info(
+                    "These pages receive traffic but have zero Search Console impressions. \
+                     URL Inspection reveals why Google is not indexing or ranking them."
+                ).with_title("Why Are These Pages Invisible in Search?")
+            );
+            let mut insp_table = AuditTable::new(vec![
+                TableColumn::new("Page").with_width("30%"),
+                TableColumn::new("Status").with_width("13%"),
+                TableColumn::new("Coverage").with_width("25%"),
+                TableColumn::new("Robots").with_width("10%"),
+                TableColumn::new("Mobile").with_width("8%"),
+                TableColumn::new("Canonical").with_width("8%"),
+                TableColumn::new("Last Crawl").with_width("6%"),
+            ]).with_title("URL Inspection Results");
+            for row in &vm.url_inspection_rows {
+                insp_table = insp_table.add_row(vec![
+                    row.url.clone(),
+                    row.verdict.clone(),
+                    row.coverage.clone(),
+                    row.robots.clone(),
+                    row.mobile.clone(),
+                    row.canonical.clone(),
+                    row.last_crawl.clone(),
+                ]);
+            }
+            b = b.add_component(insp_table);
+        }
+    }
+
     b = b.add_component(PageBreak::new());
 
     // ════════════════════════════════════════════════════════════════════════

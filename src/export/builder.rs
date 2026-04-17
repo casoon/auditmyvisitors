@@ -1,6 +1,6 @@
 //! Transforms domain reports into a flat ViewModel for PDF rendering.
 
-use crate::domain::{InsightSeverity, Opportunity, SiteOverviewReport, TopPagesReport};
+use crate::domain::{InsightSeverity, Opportunity, QueriesReport, SiteHealthReport, SiteOverviewReport, TopPagesReport};
 use crate::page_audit;
 
 pub struct ReportViewModel {
@@ -32,6 +32,14 @@ pub struct ReportViewModel {
     pub search_ctr: String,
     pub top_queries: Vec<QueryRow>,
     pub opportunity_queries: Vec<QueryRow>,
+    pub keyword_rows: Vec<KeywordRow>,
+
+    // Site Health
+    pub sitemap_total_submitted: String,
+    pub sitemap_total_indexed: String,
+    pub sitemap_indexation_rate: String,
+    pub sitemap_rows: Vec<SitemapRow>,
+    pub url_inspection_rows: Vec<UrlInspectionRow>,
 
     // Page tables
     pub all_pages: Vec<PageRow>,         // sessions-sorted, up to limit — the main list
@@ -66,6 +74,34 @@ pub struct AiPagePdfRow { pub url: String, pub sessions: String, pub share_pct: 
 pub struct QueryRow   {
     pub query: String, pub clicks: String, pub impressions: String,
     pub ctr: String,   pub position: String,
+}
+pub struct SitemapRow {
+    pub url: String,
+    pub submitted: String,
+    pub indexed: String,
+    pub rate: String,
+    pub warnings: String,
+    pub errors: String,
+    pub last_submitted: String,
+    pub status: String,
+}
+pub struct UrlInspectionRow {
+    pub url: String,
+    pub verdict: String,
+    pub coverage: String,
+    pub robots: String,
+    pub mobile: String,
+    pub canonical: String,
+    pub last_crawl: String,
+}
+pub struct KeywordRow {
+    pub rank: String,
+    pub keyword: String,
+    pub clicks: String,
+    pub impressions: String,
+    pub ctr: String,
+    pub position: String,
+    pub top_page: String,
 }
 pub struct PageRow {
     pub url: String,
@@ -105,6 +141,8 @@ pub struct InsightRow {
 pub fn build_view_model(
     overview: &SiteOverviewReport,
     top_pages: &TopPagesReport,
+    queries_report: Option<&QueriesReport>,
+    site_health: Option<&SiteHealthReport>,
     limit: usize,
 ) -> ReportViewModel {
     let t = &overview.traffic;
@@ -185,6 +223,28 @@ pub fn build_view_model(
             ctr: format!("{:.1}%", q.ctr * 100.0), position: format!("{:.1}", q.position),
         }).collect();
 
+    // ── Keyword table (from full queries report) ──────────────────────────────
+    let keyword_rows: Vec<KeywordRow> = if let Some(qr) = queries_report {
+        qr.queries.iter().enumerate().map(|(i, q)| {
+            let page = q.top_page.as_deref().unwrap_or("-");
+            let page_short = {
+                let u = page.trim_start_matches("https://").trim_start_matches("http://");
+                if u.len() > 50 { format!("{}...", &u[..47]) } else { u.to_string() }
+            };
+            KeywordRow {
+                rank:        format!("{}", i + 1),
+                keyword:     q.query.clone(),
+                clicks:      format!("{:.0}", q.clicks),
+                impressions: format!("{:.0}", q.impressions),
+                ctr:         format!("{:.1}%", q.ctr * 100.0),
+                position:    format!("{:.1}", q.position),
+                top_page:    page_short,
+            }
+        }).collect()
+    } else {
+        vec![]
+    };
+
     // ── Insights (collect before top_pages is shadowed) ─────────────────────
     let combined: Vec<&crate::domain::Insight> = overview.insights.iter()
         .chain(top_pages.insights.iter())
@@ -260,6 +320,67 @@ pub fn build_view_model(
         InsightSeverity::Positive => 2, InsightSeverity::Info => 3,
     });
 
+    // ── Site Health ───────────────────────────────────────────────────────────
+    let (sitemap_total_submitted, sitemap_total_indexed, sitemap_indexation_rate, sitemap_rows, url_inspection_rows) =
+        if let Some(sh) = site_health {
+            let rate = if sh.total_submitted > 0 {
+                format!("{:.0}%", sh.total_indexed as f64 / sh.total_submitted as f64 * 100.0)
+            } else { "–".into() };
+
+            let rows: Vec<SitemapRow> = sh.sitemaps.iter().map(|s| {
+                let r = if s.submitted_urls > 0 {
+                    format!("{:.0}%", s.indexed_urls as f64 / s.submitted_urls as f64 * 100.0)
+                } else { "–".into() };
+                let status = if s.errors > 0 { "Error" }
+                    else if s.warnings > 0 { "Warning" }
+                    else if s.is_pending { "Pending" }
+                    else { "OK" };
+                SitemapRow {
+                    url:            shorten_url(&s.url),
+                    submitted:      s.submitted_urls.to_string(),
+                    indexed:        s.indexed_urls.to_string(),
+                    rate:           r,
+                    warnings:       s.warnings.to_string(),
+                    errors:         s.errors.to_string(),
+                    last_submitted: s.last_submitted.clone().unwrap_or_else(|| "–".into()),
+                    status:         status.into(),
+                }
+            }).collect();
+
+            let insp: Vec<UrlInspectionRow> = sh.url_inspections.iter().map(|u| {
+                let verdict_label = match u.verdict.as_str() {
+                    "PASS"    => "✓ Indexed",
+                    "FAIL"    => "✗ Not indexed",
+                    "PARTIAL" => "⚠ Partial",
+                    _         => "Unknown",
+                };
+                let mobile = match u.mobile_verdict.as_str() {
+                    "PASS" => "✓",
+                    "FAIL" => "✗",
+                    _      => "–",
+                };
+                UrlInspectionRow {
+                    url:       shorten_url(&u.url),
+                    verdict:   verdict_label.into(),
+                    coverage:  u.coverage_state.clone(),
+                    robots:    if u.robots_allowed { "✓" } else { "✗ Blocked" }.into(),
+                    mobile:    mobile.into(),
+                    canonical: if u.canonical_ok { "✓" } else { "⚠ Mismatch" }.into(),
+                    last_crawl: u.last_crawl.clone().unwrap_or_else(|| "–".into()),
+                }
+            }).collect();
+
+            (
+                sh.total_submitted.to_string(),
+                sh.total_indexed.to_string(),
+                rate,
+                rows,
+                insp,
+            )
+        } else {
+            ("–".into(), "–".into(), "–".into(), vec![], vec![])
+        };
+
     ReportViewModel {
         property_name:       overview.property_name.clone(),
         date_range:          overview.date_range.clone(),
@@ -281,6 +402,12 @@ pub fn build_view_model(
         search_ctr:         format!("{:.1}%", s.ctr * 100.0),
         top_queries,
         opportunity_queries,
+        keyword_rows,
+        sitemap_total_submitted,
+        sitemap_total_indexed,
+        sitemap_indexation_rate,
+        sitemap_rows,
+        url_inspection_rows,
         all_pages,
         top_pages: top_pages_rows,
         weakest_pages,
