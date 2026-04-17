@@ -46,7 +46,22 @@ pub async fn build(
         })]),
     };
 
-    let ga_report = run_report(access_token, req).await?;
+    let event_req = ReportRequest {
+        property_id: property_id.clone(),
+        date_ranges: vec![date_range.clone()],
+        dimensions: vec!["pagePath".into(), "eventName".into()],
+        metrics: vec!["eventCount".into()],
+        dimension_filter: None,
+        limit: Some(5000),
+        order_by: None,
+    };
+
+    let (ga_report, event_report) = tokio::join!(
+        run_report(access_token, req),
+        run_report(access_token, event_req),
+    );
+    let ga_report = ga_report?;
+    let event_report = event_report?;
 
     // Aggregate per page path
     let mut page_map: HashMap<String, PageSummary> = HashMap::new();
@@ -71,6 +86,9 @@ pub async fn build(
             avg_session_duration_secs: dur,
             new_user_share: 0.0,
             key_events: 0,
+            scroll_events: 0,
+            internal_link_clicks: 0,
+            service_hint_clicks: 0,
             search: SearchPerformanceBreakdown::default(),
         });
 
@@ -86,6 +104,28 @@ pub async fn build(
         }
     }
 
+    for row in &event_report.rows {
+        let path = row.dimension_values.first().cloned().unwrap_or_default();
+        let event_name = row.dimension_values.get(1).cloned().unwrap_or_default().to_lowercase();
+        let count: i64 = row.metric_values.first().and_then(|v| v.parse::<f64>().ok()).map(|v| v as i64).unwrap_or(0);
+        if count == 0 {
+            continue;
+        }
+
+        if let Some(entry) = page_map.get_mut(&path) {
+            if event_name.starts_with("scroll") {
+                entry.scroll_events += count;
+            }
+            if event_name == "internal_link_click" || event_name == "internal_click" {
+                entry.internal_link_clicks += count;
+            }
+            if event_name == "service_hint_click" || event_name == "servicehint_click" {
+                entry.service_hint_clicks += count;
+                entry.internal_link_clicks += count;
+            }
+        }
+    }
+
     // ── Search Console: per page ─────────────────────────────────────────────
     if let Some(sc) = sc_url {
         let sc_req = SearchAnalyticsRequest {
@@ -97,8 +137,23 @@ pub async fn build(
             row_limit: Some(1000),
         };
 
-        let sc_resp = query(access_token, sc_req).await?;
+        let sc_query_req = SearchAnalyticsRequest {
+            site_url: sc_req.site_url.clone(),
+            start_date: sc_req.start_date.clone(),
+            end_date: sc_req.end_date.clone(),
+            dimensions: vec!["page".into(), "query".into()],
+            page_filter: None,
+            row_limit: Some(2500),
+        };
+
+        let (sc_resp, sc_query_resp) = tokio::join!(
+            query(access_token, sc_req),
+            query(access_token, sc_query_req),
+        );
+        let sc_resp = sc_resp?;
+        let sc_query_resp = sc_query_resp?;
         helpers::merge_sc_into_page_map(&sc_resp.rows, &mut page_map);
+        helpers::merge_sc_queries_into_page_map(&sc_query_resp.rows, &mut page_map);
     }
 
     // ── Convert raw newUsers count → share ─────────────────────────────────

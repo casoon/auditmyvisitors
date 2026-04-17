@@ -599,6 +599,9 @@ mod tests {
             avg_session_duration_secs: 30.0,
             new_user_share: 0.0,
             key_events: 0,
+            scroll_events: 0,
+            internal_link_clicks: 0,
+            service_hint_clicks: 0,
             search: SearchPerformanceBreakdown {
                 clicks: 10.0,
                 impressions: 200.0,

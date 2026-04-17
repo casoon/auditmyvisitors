@@ -622,24 +622,28 @@ mod tests {
                 url: "/a".into(), sessions: 400, organic_sessions: 300,
                 direct_sessions: 100, engagement_rate: 0.5, bounce_rate: 0.5,
                 avg_session_duration_secs: 60.0, new_user_share: 0.0, key_events: 0,
+                scroll_events: 0, internal_link_clicks: 0, service_hint_clicks: 0,
                 search: SearchPerformanceBreakdown::default(),
             },
             PageSummary {
                 url: "/b".into(), sessions: 200, organic_sessions: 100,
                 direct_sessions: 100, engagement_rate: 0.5, bounce_rate: 0.5,
                 avg_session_duration_secs: 60.0, new_user_share: 0.0, key_events: 0,
+                scroll_events: 0, internal_link_clicks: 0, service_hint_clicks: 0,
                 search: SearchPerformanceBreakdown::default(),
             },
             PageSummary {
                 url: "/c".into(), sessions: 100, organic_sessions: 50,
                 direct_sessions: 50, engagement_rate: 0.5, bounce_rate: 0.5,
                 avg_session_duration_secs: 60.0, new_user_share: 0.0, key_events: 0,
+                scroll_events: 0, internal_link_clicks: 0, service_hint_clicks: 0,
                 search: SearchPerformanceBreakdown::default(),
             },
             PageSummary {
                 url: "/d".into(), sessions: 50, organic_sessions: 25,
                 direct_sessions: 25, engagement_rate: 0.5, bounce_rate: 0.5,
                 avg_session_duration_secs: 60.0, new_user_share: 0.0, key_events: 0,
+                scroll_events: 0, internal_link_clicks: 0, service_hint_clicks: 0,
                 search: SearchPerformanceBreakdown::default(),
             },
         ];

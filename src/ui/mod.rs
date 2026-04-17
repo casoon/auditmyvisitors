@@ -6,6 +6,7 @@ use crate::domain::{
     DecayReport, DevicesReport, GrowthReport, InsightSeverity, OpportunitiesReport,
     PageDetailReport, QueriesReport, SiteOverviewReport, TopPagesReport, TrendsReport,
 };
+use crate::page_audit;
 
 // ─── Welcome ────────────────────────────────────────────────────────────────
 
@@ -181,8 +182,13 @@ pub fn print_overview(report: &SiteOverviewReport) {
 // ─── Top Pages ───────────────────────────────────────────────────────────────
 
 pub fn print_top_pages(report: &TopPagesReport) {
-    println!("\n{}", "TOP PAGES".bold().underline());
+    println!("\n{}", "PAGE PERFORMANCE".bold().underline());
     println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+
+    let tracking_enabled = report.pages.iter().any(|p| p.internal_link_clicks > 0 || p.service_hint_clicks > 0);
+    let strengths = page_audit::ranking(&report.pages, 20, |p| page_audit::strength_score(p, tracking_enabled));
+    let weaknesses = page_audit::ranking(&report.pages, 20, page_audit::weakness_score);
+    let isolated = page_audit::ranking(&report.pages, 10, |p| page_audit::isolated_score(p, tracking_enabled));
 
     let mut table = Table::new();
     table.set_header(vec![
@@ -199,7 +205,7 @@ pub fn print_top_pages(report: &TopPagesReport) {
         Cell::new("Position"),
     ]);
 
-    for (i, page) in report.pages.iter().enumerate() {
+    for (i, page) in strengths.iter().enumerate() {
         let short_url = shorten_url(&page.url, 45);
         table.add_row(vec![
             Cell::new(i + 1).set_alignment(CellAlignment::Right),
@@ -216,7 +222,69 @@ pub fn print_top_pages(report: &TopPagesReport) {
         ]);
     }
 
-    println!("{table}\n");
+    println!("{}\n{table}\n", "TOP 20 STRENGTHS".bold().underline());
+
+    print_weakest_pages(&TopPagesReport {
+        property_name: report.property_name.clone(),
+        date_range: report.date_range.clone(),
+        pages: weaknesses,
+        insights: vec![],
+    });
+
+    if !isolated.is_empty() {
+        println!("{}", "TOP 10 ISOLATED ARTICLES".bold().underline());
+        let mut isolated_table = Table::new();
+        isolated_table.set_header(vec![
+            Cell::new("#"),
+            Cell::new("Page"),
+            Cell::new("Sessions"),
+            Cell::new("Clicks"),
+            Cell::new("ServiceHint"),
+            Cell::new("Internal Clicks"),
+        ]);
+
+        for (i, page) in isolated.iter().enumerate() {
+            isolated_table.add_row(vec![
+                Cell::new(i + 1).set_alignment(CellAlignment::Right),
+                Cell::new(shorten_url(&page.url, 45)),
+                Cell::new(format_number(page.sessions)).set_alignment(CellAlignment::Right),
+                Cell::new(format_f64(page.search.clicks)).set_alignment(CellAlignment::Right),
+                Cell::new(format_number(page.service_hint_clicks)).set_alignment(CellAlignment::Right),
+                Cell::new(format_number(page.internal_link_clicks)).set_alignment(CellAlignment::Right),
+            ]);
+        }
+
+        println!("{isolated_table}\n");
+    }
+
+    if !strengths.is_empty() {
+        println!("{}", "TOP 20 PAGE DIAGNOSES".bold().underline());
+        for (i, page) in strengths.iter().enumerate() {
+            println!("{}. {}", i + 1, shorten_url(&page.url, 70).bold());
+            println!(
+                "   Metrics: {} sessions | {:.0} impressions | {:.1}% CTR | pos {:.1} | {:.0}% engagement",
+                format_number(page.sessions),
+                page.search.impressions,
+                page.search.ctr * 100.0,
+                page.search.average_position,
+                page.engagement_rate * 100.0
+            );
+            println!(
+                "   Queries: {}",
+                page_audit::top_query_summary(page).dimmed()
+            );
+            println!(
+                "   Diagnosis: {}",
+                page_audit::issue_label(page, tracking_enabled).yellow()
+            );
+            println!(
+                "   Next step: {}",
+                page_audit::recommendation(page, tracking_enabled)
+            );
+            println!();
+        }
+    }
+
     print_insights(&report.insights);
 }
 
