@@ -7,7 +7,8 @@ Local CLI reporting for Google Analytics 4 and Search Console.
 - Where is traffic growing or falling?
 - Which pages have search visibility but weak on-site performance?
 - Which URLs look promising for CTR or landing page improvements?
-- What changed before and after a deploy, content update, or relaunch?
+- Which pages have traffic but are not indexed in Google?
+- Are all sitemaps healthy and fully indexed?
 
 The current product is intentionally lightweight:
 
@@ -58,10 +59,18 @@ Download the latest binary from the [releases page](https://github.com/casoon/au
 ### Build from source
 
 ```bash
-# Requires Rust (https://rustup.rs)
+# Requires Rust (https://rustup.rs) and Google OAuth credentials
 git clone https://github.com/casoon/auditmyvisitors
 cd auditmyvisitors
-cargo build --release
+
+# Copy credentials into .env.local (never committed — see .gitignore)
+cat > .env.local <<'EOF'
+export GOOGLE_CLIENT_ID=...
+export GOOGLE_CLIENT_SECRET=...
+EOF
+
+# Build (credentials are embedded at compile time)
+make release
 ./target/release/auditmyvisitors --help
 ```
 
@@ -84,11 +93,12 @@ auditmyvisitors report overview
 
 It is built for:
 
-- fast site overviews
-- page-level analysis
-- before/after comparisons
+- fast site overviews with GA4 + Search Console combined
+- page-level analysis (top pages, weakest pages, click-gap, isolated articles)
+- GSC site health: sitemap status, URL indexation, crawl coverage
+- keyword performance table with top-ranking page per query
 - opportunity and risk detection
-- exportable reports for sharing
+- exportable PDF reports (up to 200 pages, keyword table, URL inspection)
 
 It is not currently:
 
@@ -128,10 +138,8 @@ If BigQuery support is added later, it should extend the product rather than red
 
 ## Roadmap
 
-The current roadmap is documented in [ziel.md](/Users/jseidel/GitHub/auditmyvisitors/ziel.md:1). In short:
-
-- `Now`: strengthen overview, page, top-pages, compare, and PDF export on top of GA4 Data API and Search Console API.
-- `Next`: add better segmentation, directory analysis, page-type logic, and scoring.
+- `Now`: GA4 + Search Console reporting, PDF export, GSC site health (sitemaps, URL inspection), keyword table.
+- `Next`: better segmentation, directory analysis, page-type logic, and scoring.
 - `Later`: optionally add BigQuery-based raw-data and advanced analysis features for teams that need them.
 
 ## Commands
@@ -173,8 +181,18 @@ auditmyvisitors report compare --url https://example.com/page --since 2026-03-01
 ### Export
 
 ```bash
-auditmyvisitors export pdf --report latest
-auditmyvisitors export pdf --report latest --output ./my-report.pdf
+# PDF (fetches live data, includes site health + keyword table)
+auditmyvisitors export pdf
+auditmyvisitors export pdf --limit 200 --output ./my-report.pdf
+auditmyvisitors export pdf --days 90 --output ./report-90d.pdf
+
+# JSON
+auditmyvisitors export json
+auditmyvisitors export json --output ./report.json
+
+# CSV (choose a specific report)
+auditmyvisitors export csv --report top-pages
+auditmyvisitors export csv --report queries --limit 100
 ```
 
 ## Privacy
