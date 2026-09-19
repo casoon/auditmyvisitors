@@ -33,6 +33,6 @@
 - Für die Google-OAuth-Verifizierung braucht die öffentliche Seite eine erreichbare
   Privacy Policy. `https://auditmyvisitors.casoon.de/` antwortet mit 200, die im README
   verlinkte `/datenschutz` mit 404 — die Anforderung ist damit aktuell nicht erfüllt.
-  Die Seite liegt in einem anderen Repository.
+  Die Seite liegt in einem anderen Repository. (Issue #1)
 - `rust-version = "1.85"` ist gesetzt, wird aber in CI nicht gegen einen 1.85-Toolchain
-  geprüft — CI baut auf `stable`.
+  geprüft — CI baut auf `stable`. (Issue #3)
