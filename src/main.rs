@@ -20,8 +20,8 @@ mod ui;
 
 use anyhow::Context;
 use clap::Parser;
-use colored::Colorize;
-use indicatif::{ProgressBar, ProgressStyle};
+use crate::ui::spinner;
+use crate::ui::style::Paint;
 
 use cli::{AuthAction, Cli, Command, ExportAction, PropertiesAction, ReportAction, SnapshotAction};
 use config::AppConfig;
@@ -29,7 +29,7 @@ use config::AppConfig;
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
-        eprintln!("{} {}", "Error:".red().bold(), e);
+        eprintln!("{} {}", "Error:".err(), e);
         std::process::exit(1);
     }
 }
@@ -63,8 +63,8 @@ async fn handle_auth(action: AuthAction, _config: &AppConfig) -> anyhow::Result<
     match action {
         AuthAction::Login => {
             auth::run_oauth_login().await?;
-            println!("\n{} You are now logged in.", "✓".green().bold());
-            println!("Next step: {}", "auditmyvisitors properties select".cyan());
+            println!("\n{} You are now logged in.", "✓".ok());
+            println!("Next step: {}", "auditmyvisitors properties select".accent());
         }
         AuthAction::Status => {
             let status = auth::auth_status()?;
@@ -72,7 +72,7 @@ async fn handle_auth(action: AuthAction, _config: &AppConfig) -> anyhow::Result<
         }
         AuthAction::Logout => {
             storage::delete_tokens()?;
-            println!("{} Logged out — tokens deleted.", "✓".green().bold());
+            println!("{} Logged out — tokens deleted.", "✓".ok());
         }
     }
     Ok(())
@@ -95,9 +95,9 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
                 return Ok(());
             }
 
-            println!("\n{}", "GA4 PROPERTIES".bold().underline());
+            println!("\n{}", "GA4 PROPERTIES".heading());
             for prop in &properties {
-                println!("  {} — {}", prop.name.cyan(), prop.display_name);
+                println!("  {} — {}", prop.name.accent(), prop.display_name);
             }
 
             let pb2 = spinner("Loading Search Console properties…");
@@ -105,9 +105,9 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
             pb2.finish_and_clear();
 
             if !sites.is_empty() {
-                println!("\n{}", "SEARCH CONSOLE PROPERTIES".bold().underline());
+                println!("\n{}", "SEARCH CONSOLE PROPERTIES".heading());
                 for site in &sites {
-                    println!("  {}", site.cyan());
+                    println!("  {}", site.accent());
                 }
             }
         }
@@ -160,10 +160,10 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
             }
 
             config.save().context("Could not save configuration")?;
-            println!("\n{} Property selection saved.", "✓".green().bold());
-            println!("GA4:             {}", selected_ga4.display_name.cyan());
+            println!("\n{} Property selection saved.", "✓".ok());
+            println!("GA4:             {}", selected_ga4.display_name.accent());
             if let Some(sc) = &config.properties.search_console_url {
-                println!("Search Console:  {}", sc.cyan());
+                println!("Search Console:  {}", sc.accent());
             }
         }
     }
@@ -362,7 +362,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                     std::fs::create_dir_all(parent)?;
                 }
                 std::fs::write(&path, &json)?;
-                println!("{} JSON saved: {}", "✓".green().bold(), path.cyan());
+                println!("{} JSON saved: {}", "✓".ok(), path.accent());
             } else {
                 println!("{json}");
             }
@@ -449,7 +449,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                     std::fs::create_dir_all(parent)?;
                 }
                 std::fs::write(&path, &csv_bytes)?;
-                println!("{} CSV saved: {}", "✓".green().bold(), path.cyan());
+                println!("{} CSV saved: {}", "✓".ok(), path.accent());
             } else {
                 use std::io::Write;
                 std::io::stdout().write_all(&csv_bytes)?;
@@ -505,7 +505,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
             export::pdf::generate(&vm, &path).context("PDF export failed")?;
 
             pb.finish_and_clear();
-            println!("{} PDF saved: {}", "✓".green().bold(), path.cyan());
+            println!("{} PDF saved: {}", "✓".ok(), path.accent());
         }
     }
     Ok(())
@@ -524,12 +524,12 @@ fn handle_snapshot(action: SnapshotAction, config: &AppConfig) -> anyhow::Result
 
             let snaps = snapshots::list(property_name)?;
             if snaps.is_empty() {
-                println!("No snapshots available. Run {} first.", "report overview".cyan());
+                println!("No snapshots available. Run {} first.", "report overview".accent());
                 return Ok(());
             }
 
-            println!("\n{}", "SNAPSHOTS".bold().underline());
-            println!("Property: {}\n", property_name.cyan());
+            println!("\n{}", "SNAPSHOTS".heading());
+            println!("Property: {}\n", property_name.accent());
 
             let mut table = comfy_table::Table::new();
             table.set_header(vec![
@@ -563,14 +563,3 @@ fn handle_snapshot(action: SnapshotAction, config: &AppConfig) -> anyhow::Result
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-fn spinner(msg: &str) -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.cyan} {msg}")
-            .unwrap(),
-    );
-    pb.set_message(msg.to_string());
-    pb.enable_steady_tick(std::time::Duration::from_millis(80));
-    pb
-}

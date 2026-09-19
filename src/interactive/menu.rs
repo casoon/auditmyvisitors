@@ -1,6 +1,6 @@
 use anyhow::Context;
-use colored::Colorize;
-use indicatif::{ProgressBar, ProgressStyle};
+use crate::ui::spinner;
+use crate::ui::style::Paint;
 
 use crate::config::AppConfig;
 use crate::{auth, export, narrative, reports, snapshots, ui};
@@ -48,7 +48,7 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
         .await
         .context("Failed to refresh token")?;
     run_full_report(config, &token, days).await.unwrap_or_else(|e| {
-        eprintln!("\n{} {}\n", "Error:".red().bold(), e);
+        eprintln!("\n{} {}\n", "Error:".err(), e);
     });
 
     loop {
@@ -83,7 +83,7 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
             _ => Ok(()),
         }
         .unwrap_or_else(|e| {
-            eprintln!("\n{} {}\n", "Error:".red().bold(), e);
+            eprintln!("\n{} {}\n", "Error:".err(), e);
         });
     }
 
@@ -199,7 +199,7 @@ async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::
 
     println!(
         "{}\n",
-        "── Report complete ──".bold().dimmed()
+        "── Report complete ──".muted()
     );
 
     // Offer export
@@ -365,7 +365,7 @@ async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Resul
                 std::fs::create_dir_all(parent)?;
             }
             std::fs::write(&path, &csv_bytes)?;
-            println!("{} CSV saved: {}", "✓".green().bold(), path.cyan());
+            println!("{} CSV saved: {}", "✓".ok(), path.accent());
         }
         _ => {} // EXP_BACK
     }
@@ -406,7 +406,7 @@ async fn export_pdf(
     let vm = export::builder::build_view_model(overview, top_pages, None, None, 20);
     export::pdf::generate(&vm, &path).context("PDF export failed")?;
 
-    println!("{} PDF saved: {}", "✓".green().bold(), path.cyan());
+    println!("{} PDF saved: {}", "✓".ok(), path.accent());
     Ok(())
 }
 
@@ -436,20 +436,9 @@ fn export_json(
     let json = serde_json::to_string_pretty(&JsonExport { overview, top_pages })?;
     std::fs::write(&path, &json)?;
 
-    println!("{} JSON saved: {}", "✓".green().bold(), path.cyan());
+    println!("{} JSON saved: {}", "✓".ok(), path.accent());
     Ok(())
 }
 
 // ─── Spinner ────────────────────────────────────────────────────────────────
 
-fn spinner(msg: &str) -> ProgressBar {
-    let pb = ProgressBar::new_spinner();
-    pb.set_style(
-        ProgressStyle::default_spinner()
-            .template("{spinner:.cyan} {msg}")
-            .unwrap(),
-    );
-    pb.set_message(msg.to_string());
-    pb.enable_steady_tick(std::time::Duration::from_millis(80));
-    pb
-}

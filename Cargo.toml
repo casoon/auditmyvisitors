@@ -2,6 +2,7 @@
 name = "auditmyvisitors"
 version = "0.2.9"
 edition = "2021"
+rust-version = "1.85"
 description = "CLI tool for Google Analytics 4 and Search Console reporting"
 license = "MIT"
 
@@ -27,9 +28,6 @@ comfy-table = "7"
 
 # Terminal progress indicators
 indicatif = "0.17"
-
-# Terminal colors
-colored = "2"
 
 # JSON serialization
 serde = { version = "1", features = ["derive"] }
@@ -74,6 +72,7 @@ rand = "0.8"
 # Structured logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+runemark = { version = "0.5.1", features = ["progress"] }
 
 [profile.release]
 opt-level = 3

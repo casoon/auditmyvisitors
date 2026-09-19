@@ -1,5 +1,5 @@
 use anyhow::Context;
-use colored::Colorize;
+use crate::ui::style::Paint;
 
 use crate::auth;
 use crate::config::AppConfig;
@@ -15,15 +15,15 @@ pub async fn ensure_ready(config: &mut AppConfig) -> anyhow::Result<String> {
         auth::AuthStatus::NotLoggedIn => {
             println!("First, let's connect your Google account.\n");
             auth::run_oauth_login().await?;
-            println!("\n{} Successfully connected.\n", "✓".green().bold());
+            println!("\n{} Successfully connected.\n", "✓".ok());
         }
         auth::AuthStatus::TokenExpired => {
             println!("Refreshing session…");
             auth::ensure_valid_token().await?;
-            println!("{} Session refreshed.\n", "✓".green().bold());
+            println!("{} Session refreshed.\n", "✓".ok());
         }
         auth::AuthStatus::LoggedIn => {
-            println!("{} Google account connected.\n", "✓".green().bold());
+            println!("{} Google account connected.\n", "✓".ok());
         }
     }
 
@@ -45,8 +45,8 @@ pub async fn ensure_ready(config: &mut AppConfig) -> anyhow::Result<String> {
             .unwrap_or("not set");
 
         println!("Current property:");
-        println!("  GA4:             {}", name.cyan());
-        println!("  Search Console:  {}\n", sc.cyan());
+        println!("  GA4:             {}", name.accent());
+        println!("  Search Console:  {}\n", sc.accent());
 
         let keep = inquire::Confirm::new("Continue with this property?")
             .with_default(true)
@@ -112,8 +112,8 @@ async fn select_properties(config: &mut AppConfig, token: &str) -> anyhow::Resul
 
     println!(
         "\n{} Property saved: {}",
-        "✓".green().bold(),
-        selected_ga4.display_name.cyan()
+        "✓".ok(),
+        selected_ga4.display_name.accent()
     );
 
     Ok(())

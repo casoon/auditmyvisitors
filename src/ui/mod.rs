@@ -1,19 +1,47 @@
-use colored::Colorize;
+pub mod style;
+
 use comfy_table::{Cell, CellAlignment, Table};
+use indicatif::{ProgressBar, ProgressStyle};
+use runemark::{DetailLevel, Finding, FindingGroup, Report, Tone, Verdict};
+use style::Paint;
 
 use crate::domain::{
     AiTrafficReport, ChannelsReport, ClustersReport, ComparisonReport, CountriesReport,
-    DecayReport, DevicesReport, GrowthReport, InsightSeverity, OpportunitiesReport,
+    DecayReport, DevicesReport, GrowthReport, InsightCategory, InsightSeverity,
+    OpportunitiesReport,
     PageDetailReport, QueriesReport, SiteOverviewReport, TopPagesReport, TrendsReport,
 };
 use crate::page_audit;
 
 // ─── Welcome ────────────────────────────────────────────────────────────────
 
+/// An indeterminate spinner for a single pending fetch.
+///
+/// runemark owns colour and reports, but its progress sink models countable work
+/// (`{pos}/{len}`); these waits are one concurrent batch of API calls with nothing
+/// to count. The spinner therefore stays on `indicatif` and only borrows the colour
+/// decision, so `NO_COLOR` and redirected output behave like every other line.
+pub fn spinner(msg: &str) -> ProgressBar {
+    let template = if style::console().color_enabled() {
+        "{spinner:.cyan} {msg}"
+    } else {
+        "{spinner} {msg}"
+    };
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::default_spinner()
+            .template(template)
+            .expect("the spinner template is a literal and always valid"),
+    );
+    pb.set_message(msg.to_string());
+    pb.enable_steady_tick(std::time::Duration::from_millis(80));
+    pb
+}
+
 pub fn print_welcome() {
     println!();
-    println!("{}", "auditmyvisitors".bold().cyan());
-    println!("{}", "Google Analytics 4 & Search Console Reporting".dimmed());
+    println!("{}", "auditmyvisitors".accent());
+    println!("{}", "Google Analytics 4 & Search Console Reporting".muted());
     println!();
 }
 
@@ -22,19 +50,19 @@ pub fn print_welcome() {
 pub fn print_auth_status(status: &crate::auth::AuthStatus) {
     match status {
         crate::auth::AuthStatus::LoggedIn => {
-            println!("{} Logged in — token is valid.", "✓".green().bold());
+            println!("{} Logged in — token is valid.", "✓".ok());
         }
         crate::auth::AuthStatus::TokenExpired => {
             println!(
                 "{} Token expired — will be refreshed automatically on next API call.",
-                "⚠".yellow().bold()
+                "⚠".warn()
             );
         }
         crate::auth::AuthStatus::NotLoggedIn => {
             println!(
                 "{} Not logged in. Start with: {}",
-                "✗".red().bold(),
-                "auditmyvisitors auth login".cyan()
+                "✗".err(),
+                "auditmyvisitors auth login".accent()
             );
         }
     }
@@ -46,8 +74,8 @@ pub fn print_snapshot_comparison(
     prev: &crate::snapshots::Snapshot,
     report: &SiteOverviewReport,
 ) {
-    println!("{}", "COMPARISON WITH LAST SNAPSHOT".bold().underline());
-    println!("Last snapshot: {} ({} days)\n", prev.date.cyan(), prev.days);
+    println!("{}", "COMPARISON WITH LAST SNAPSHOT".heading());
+    println!("Last snapshot: {} ({} days)\n", prev.date.accent(), prev.days);
 
     let sess_pct = crate::helpers::pct_change(prev.sessions as f64, report.traffic.total_sessions as f64);
     let clicks_pct = crate::helpers::pct_change(prev.clicks, report.search.clicks);
@@ -63,8 +91,8 @@ pub fn print_snapshot_comparison(
 // ─── Overview ────────────────────────────────────────────────────────────────
 
 pub fn print_overview(report: &SiteOverviewReport) {
-    println!("\n{}", "OVERVIEW".bold().underline());
-    println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+    println!("\n{}", "OVERVIEW".heading());
+    println!("Property: {}  |  Period: {}\n", report.property_name.accent(), report.date_range);
 
     // ── Trend summary (if available) ─────────────────────────────────────────
     if let Some(trend) = &report.trend {
@@ -73,7 +101,7 @@ pub fn print_overview(report: &SiteOverviewReport) {
         let impr = fmt_trend_colored(trend.impressions_pct, false);
         println!(
             "{}  Sessions {}  |  Clicks {}  |  Impressions {}",
-            "TREND".bold(), sess, clicks, impr
+            "TREND".strong(), sess, clicks, impr
         );
         println!();
     }
@@ -107,7 +135,7 @@ pub fn print_overview(report: &SiteOverviewReport) {
 
     // ── Top sources ──────────────────────────────────────────────────────────
     if !report.top_sources.is_empty() {
-        println!("{}", "TOP SOURCES".bold().underline());
+        println!("{}", "TOP SOURCES".heading());
         let mut src_table = Table::new();
         src_table.set_header(vec![
             Cell::new("Source"),
@@ -135,7 +163,7 @@ pub fn print_overview(report: &SiteOverviewReport) {
         } else { 0.0 };
         println!(
             "{} {} Sessions ({:.1}%)",
-            "AI-TRAFFIC".bold().underline(),
+            "AI-TRAFFIC".heading(),
             format_number(ai_total),
             ai_pct
         );
@@ -145,7 +173,7 @@ pub fn print_overview(report: &SiteOverviewReport) {
         println!();
     }
 
-    println!("{}", "SEARCH CONSOLE".bold().underline());
+    println!("{}", "SEARCH CONSOLE".heading());
     let mut sc = traffic_table();
     sc.add_row(vec!["Clicks", &format_f64(report.search.clicks)]);
     sc.add_row(vec!["Impressions", &format_f64(report.search.impressions)]);
@@ -155,7 +183,7 @@ pub fn print_overview(report: &SiteOverviewReport) {
 
     // ── Top opportunities (max 5) ────────────────────────────────────────────
     if !report.opportunities.is_empty() {
-        println!("{}", "TOP OPPORTUNITIES".bold().underline());
+        println!("{}", "TOP OPPORTUNITIES".heading());
         for (i, opp) in report.opportunities.iter().take(5).enumerate() {
             let kw = opp.keyword.as_deref()
                 .or(if opp.url.is_empty() { None } else { Some(opp.url.as_str()) })
@@ -163,7 +191,7 @@ pub fn print_overview(report: &SiteOverviewReport) {
             println!(
                 "  {}. {} — \"{}\" (+{:.0} Clicks, {})",
                 i + 1,
-                opp.type_labels.join(" + ").yellow(),
+                opp.type_labels.join(" + ").warn(),
                 kw,
                 opp.estimated_clicks,
                 opp.opportunity_type.effort_label()
@@ -171,7 +199,7 @@ pub fn print_overview(report: &SiteOverviewReport) {
         }
         let total: f64 = report.opportunities.iter().map(|o| o.estimated_clicks).sum();
         if total > 0.0 {
-            println!("  Estimated total potential: {} Clicks/month", format!("+{:.0}", total).green());
+            println!("  Estimated total potential: {} Clicks/month", format!("+{:.0}", total).ok());
         }
         println!();
     }
@@ -182,8 +210,8 @@ pub fn print_overview(report: &SiteOverviewReport) {
 // ─── Top Pages ───────────────────────────────────────────────────────────────
 
 pub fn print_top_pages(report: &TopPagesReport) {
-    println!("\n{}", "PAGE PERFORMANCE".bold().underline());
-    println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+    println!("\n{}", "PAGE PERFORMANCE".heading());
+    println!("Property: {}  |  Period: {}\n", report.property_name.accent(), report.date_range);
 
     let tracking_enabled = report.pages.iter().any(|p| p.internal_link_clicks > 0 || p.service_hint_clicks > 0);
     let strengths = page_audit::ranking(&report.pages, 20, |p| page_audit::strength_score(p, tracking_enabled));
@@ -222,7 +250,7 @@ pub fn print_top_pages(report: &TopPagesReport) {
         ]);
     }
 
-    println!("{}\n{table}\n", "TOP 20 STRENGTHS".bold().underline());
+    println!("{}\n{table}\n", "TOP 20 STRENGTHS".heading());
 
     print_weakest_pages(&TopPagesReport {
         property_name: report.property_name.clone(),
@@ -232,7 +260,7 @@ pub fn print_top_pages(report: &TopPagesReport) {
     });
 
     if !isolated.is_empty() {
-        println!("{}", "TOP 10 ISOLATED ARTICLES".bold().underline());
+        println!("{}", "TOP 10 ISOLATED ARTICLES".heading());
         let mut isolated_table = Table::new();
         isolated_table.set_header(vec![
             Cell::new("#"),
@@ -258,9 +286,9 @@ pub fn print_top_pages(report: &TopPagesReport) {
     }
 
     if !strengths.is_empty() {
-        println!("{}", "TOP 20 PAGE DIAGNOSES".bold().underline());
+        println!("{}", "TOP 20 PAGE DIAGNOSES".heading());
         for (i, page) in strengths.iter().enumerate() {
-            println!("{}. {}", i + 1, shorten_url(&page.url, 70).bold());
+            println!("{}. {}", i + 1, shorten_url(&page.url, 70).strong());
             println!(
                 "   Metrics: {} sessions | {:.0} impressions | {:.1}% CTR | pos {:.1} | {:.0}% engagement",
                 format_number(page.sessions),
@@ -271,11 +299,11 @@ pub fn print_top_pages(report: &TopPagesReport) {
             );
             println!(
                 "   Queries: {}",
-                page_audit::top_query_summary(page).dimmed()
+                page_audit::top_query_summary(page).muted()
             );
             println!(
                 "   Diagnosis: {}",
-                page_audit::issue_label(page, tracking_enabled).yellow()
+                page_audit::issue_label(page, tracking_enabled).warn()
             );
             println!(
                 "   Next step: {}",
@@ -289,8 +317,8 @@ pub fn print_top_pages(report: &TopPagesReport) {
 }
 
 pub fn print_weakest_pages(report: &TopPagesReport) {
-    println!("\n{}", "PAGES WITH THE BIGGEST ISSUES".bold().underline());
-    println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+    println!("\n{}", "PAGES WITH THE BIGGEST ISSUES".heading());
+    println!("Property: {}  |  Period: {}\n", report.property_name.accent(), report.date_range);
 
     let mut table = Table::new();
     table.set_header(vec![
@@ -338,8 +366,8 @@ pub fn print_weakest_pages(report: &TopPagesReport) {
 // ─── Page detail ─────────────────────────────────────────────────────────────
 
 pub fn print_page_detail(report: &PageDetailReport) {
-    println!("\n{}", "PAGE DETAIL".bold().underline());
-    println!("URL: {}  |  Period: {}\n", report.url.cyan(), report.date_range);
+    println!("\n{}", "PAGE DETAIL".heading());
+    println!("URL: {}  |  Period: {}\n", report.url.accent(), report.date_range);
 
     let mut table = traffic_table();
     table.add_row(vec!["Total sessions", &format_number(report.traffic.total_sessions)]);
@@ -354,7 +382,7 @@ pub fn print_page_detail(report: &PageDetailReport) {
     }
     println!("{table}\n");
 
-    println!("{}", "SEARCH CONSOLE".bold().underline());
+    println!("{}", "SEARCH CONSOLE".heading());
     let mut sc = traffic_table();
     sc.add_row(vec!["Clicks", &format_f64(report.search.clicks)]);
     sc.add_row(vec!["Impressions", &format_f64(report.search.impressions)]);
@@ -363,7 +391,7 @@ pub fn print_page_detail(report: &PageDetailReport) {
     println!("{sc}\n");
 
     if !report.search.top_queries.is_empty() {
-        println!("{}", "TOP KEYWORDS".bold().underline());
+        println!("{}", "TOP KEYWORDS".heading());
         let mut qt = Table::new();
         qt.set_header(vec!["Query", "Clicks", "Impressions", "CTR", "Position"]);
         for q in report.search.top_queries.iter().take(10) {
@@ -385,12 +413,12 @@ pub fn print_page_detail(report: &PageDetailReport) {
 // ─── Comparison ──────────────────────────────────────────────────────────────
 
 pub fn print_comparison(report: &ComparisonReport) {
-    println!("\n{}", "COMPARISON".bold().underline());
+    println!("\n{}", "COMPARISON".heading());
     if let Some(url) = &report.url {
-        println!("URL: {}", url.cyan());
+        println!("URL: {}", url.accent());
     }
     println!("Change date: {}  |  Before: {} days  |  After: {} days\n",
-        report.change_date.yellow(), report.before_days, report.after_days);
+        report.change_date.warn(), report.before_days, report.after_days);
 
     // ── Verdict line ─────────────────────────────────────────────────────────
     let d = &report.delta;
@@ -410,10 +438,10 @@ pub fn print_comparison(report: &ComparisonReport) {
 
     if !winners.is_empty() || !losers.is_empty() {
         if !winners.is_empty() {
-            println!("{} {}", "Winners:".green().bold(), winners.join(", "));
+            println!("{} {}", "Winners:".ok(), winners.join(", "));
         }
         if !losers.is_empty() {
-            println!("{} {}", "Losers:".red().bold(), losers.join(", "));
+            println!("{} {}", "Losers:".err(), losers.join(", "));
         }
         println!();
     }
@@ -454,7 +482,7 @@ pub fn print_comparison(report: &ComparisonReport) {
     println!("{table}\n");
 
     if !report.summary.is_empty() {
-        println!("{}\n{}\n", "SUMMARY".bold().underline(), report.summary);
+        println!("{}\n{}\n", "SUMMARY".heading(), report.summary);
     }
 
     print_insights(&report.insights);
@@ -466,7 +494,7 @@ pub fn print_management_summary(paragraphs: &[String]) {
     if paragraphs.is_empty() {
         return;
     }
-    println!("\n{}", "EXECUTIVE SUMMARY".bold().underline());
+    println!("\n{}", "EXECUTIVE SUMMARY".heading());
     println!();
     for para in paragraphs {
         // Wrap paragraph at ~90 chars for terminal readability
@@ -486,12 +514,12 @@ pub fn print_growth_highlights(report: &GrowthReport) {
         return;
     }
 
-    println!("{}", "GROWTH HIGHLIGHTS".bold().underline());
+    println!("{}", "GROWTH HIGHLIGHTS".heading());
 
     if let Some(top) = report.top_growing_pages.first() {
         println!(
             "  Strongest page growth: {} ({:+.0} sessions, {:+.0}%)",
-            shorten_url(&top.label, 50).green(),
+            shorten_url(&top.label, 50).ok(),
             top.delta,
             top.delta_pct
         );
@@ -500,7 +528,7 @@ pub fn print_growth_highlights(report: &GrowthReport) {
     if let Some(drop) = report.top_declining_pages.first() {
         println!(
             "  Biggest page decline: {} ({:+.0} sessions, {:+.0}%)",
-            shorten_url(&drop.label, 50).red(),
+            shorten_url(&drop.label, 50).err(),
             drop.delta,
             drop.delta_pct
         );
@@ -510,7 +538,7 @@ pub fn print_growth_highlights(report: &GrowthReport) {
         if channel.delta > 0 {
             println!(
                 "  Fastest channel growth: {} ({:+} sessions, {:+.0}%)",
-                channel.channel.cyan(),
+                channel.channel.accent(),
                 channel.delta,
                 channel.delta_pct
             );
@@ -534,7 +562,7 @@ pub fn print_trend_highlights(report: &TrendsReport) {
         return;
     }
 
-    println!("{}", "TREND HIGHLIGHTS".bold().underline());
+    println!("{}", "TREND HIGHLIGHTS".heading());
 
     if report.weeks.len() >= 2 {
         let prev = &report.weeks[report.weeks.len() - 2];
@@ -553,7 +581,7 @@ pub fn print_trend_highlights(report: &TrendsReport) {
     }) {
         println!(
             "  Biggest ranking jump: {} ({:.1} -> {:.1})",
-            shorten_url(&best.label, 45).green(),
+            shorten_url(&best.label, 45).ok(),
             best.previous,
             best.current
         );
@@ -564,7 +592,7 @@ pub fn print_trend_highlights(report: &TrendsReport) {
     }) {
         println!(
             "  Biggest ranking loss: {} ({:.1} -> {:.1})",
-            shorten_url(&worst.label, 45).red(),
+            shorten_url(&worst.label, 45).err(),
             worst.previous,
             worst.current
         );
@@ -578,12 +606,12 @@ pub fn print_cluster_highlights(report: &ClustersReport) {
         return;
     }
 
-    println!("{}", "CLUSTER HIGHLIGHTS".bold().underline());
+    println!("{}", "CLUSTER HIGHLIGHTS".heading());
 
     if let Some(top) = report.clusters.first() {
         println!(
             "  Strongest topic: {} ({} sessions across {} pages)",
-            top.name.cyan(),
+            top.name.accent(),
             format_number(top.sessions),
             top.pages
         );
@@ -597,7 +625,7 @@ pub fn print_cluster_highlights(report: &ClustersReport) {
     {
         println!(
             "  Best optimization cluster: {} (~{:.0} additional clicks at optimal CTR)",
-            best.name.yellow(),
+            best.name.warn(),
             best.ctr_potential
         );
     }
@@ -605,7 +633,7 @@ pub fn print_cluster_highlights(report: &ClustersReport) {
     if let Some(hub) = report.clusters.iter().find(|c| c.pages <= 1 && c.queries >= 5) {
         println!(
             "  Expansion candidate: {} ({} queries, {} page)",
-            hub.name.blue(),
+            hub.name.accent(),
             hub.queries,
             hub.pages
         );
@@ -620,27 +648,82 @@ fn print_insights(insights: &[crate::domain::Insight]) {
     if insights.is_empty() {
         return;
     }
-    println!("{}", "INSIGHTS".bold().underline());
-    for insight in insights {
-        let prefix = match insight.severity {
-            InsightSeverity::Positive => "✓".green().bold().to_string(),
-            InsightSeverity::Info    => "ℹ".blue().bold().to_string(),
-            InsightSeverity::Warning => "⚠".yellow().bold().to_string(),
-            InsightSeverity::Critical=> "✗".red().bold().to_string(),
-        };
-        println!("{prefix} {}", insight.headline.bold());
-        println!("   {}", insight.explanation);
-    }
+    print!("{}", build_insight_report(insights).render(style::console()));
     println!();
+}
+
+/// Turn insights into a runemark report: one group per category, the explanation
+/// as the remedy, and the worst severity as the verdict.
+///
+/// `Finding` offers `remedy` as its only secondary line, so explanatory insights
+/// ("Organic sessions have developed positively.") are labelled `Remedy:` as well.
+/// The alternative — folding the explanation into the message — would need a
+/// terminal width for wrapping and buys less than the grouping costs.
+fn build_insight_report(insights: &[crate::domain::Insight]) -> Report {
+    let mut report = Report::new("Insights", overall_verdict(insights))
+        .with_detail_level(DetailLevel::Detailed);
+
+    // Group by category, in the order the categories first appear.
+    let mut order: Vec<&InsightCategory> = Vec::new();
+    for insight in insights {
+        if !order.contains(&&insight.category) {
+            order.push(&insight.category);
+        }
+    }
+
+    for category in order {
+        let mut group = FindingGroup::new(category_label(category));
+        for insight in insights.iter().filter(|i| &i.category == category) {
+            group = group.add_finding(
+                Finding::new(severity_tone(&insight.severity), &insight.headline)
+                    .with_remedy(&insight.explanation),
+            );
+        }
+        report = report.add_group(group);
+    }
+
+    report
+}
+
+/// The worst severity present decides how the whole insight block reads.
+fn overall_verdict(insights: &[crate::domain::Insight]) -> Verdict {
+    if insights.iter().any(|i| i.severity == InsightSeverity::Critical) {
+        Verdict::Failed
+    } else if insights.iter().any(|i| i.severity == InsightSeverity::Warning) {
+        Verdict::Warning
+    } else if insights.iter().any(|i| i.severity == InsightSeverity::Positive) {
+        Verdict::Passed
+    } else {
+        Verdict::Info
+    }
+}
+
+fn severity_tone(severity: &InsightSeverity) -> Tone {
+    match severity {
+        InsightSeverity::Positive => Tone::Success,
+        InsightSeverity::Info => Tone::Info,
+        InsightSeverity::Warning => Tone::Warning,
+        InsightSeverity::Critical => Tone::Error,
+    }
+}
+
+fn category_label(category: &InsightCategory) -> &'static str {
+    match category {
+        InsightCategory::Traffic => "Traffic",
+        InsightCategory::Search => "Search",
+        InsightCategory::Engagement => "Engagement",
+        InsightCategory::Conversion => "Conversion",
+        InsightCategory::Trend => "Trend",
+    }
 }
 
 fn print_recommendations(recs: &[crate::domain::Recommendation]) {
     if recs.is_empty() {
         return;
     }
-    println!("{}", "RECOMMENDATIONS".bold().underline());
+    println!("{}", "RECOMMENDATIONS".heading());
     for rec in recs {
-        println!("{}. {}", rec.priority, rec.headline.bold());
+        println!("{}. {}", rec.priority, rec.headline.strong());
         println!("   {}", rec.action);
     }
     println!();
@@ -699,9 +782,9 @@ fn add_comparison_row(
     let pct_str = if delta_pct == 0.0 {
         "—".to_string()
     } else if (delta_pct > 0.0) != lower_is_better {
-        format!("{:+.1}%", delta_pct).green().to_string()
+        format!("{:+.1}%", delta_pct).ok()
     } else {
-        format!("{:+.1}%", delta_pct).red().to_string()
+        format!("{:+.1}%", delta_pct).err()
     };
 
     table.add_row(vec![
@@ -735,17 +818,17 @@ fn fmt_trend_colored(pct: f64, lower_is_better: bool) -> String {
     if pct == 0.0 {
         "—".to_string()
     } else if (pct > 0.0) != lower_is_better {
-        s.green().to_string()
+        s.ok()
     } else {
-        s.red().to_string()
+        s.err()
     }
 }
 
 // ─── Opportunities report ────────────────────────────────────────────────────
 
 pub fn print_opportunities(report: &OpportunitiesReport) {
-    println!("\n{}", "OPPORTUNITIES".bold().underline());
-    println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+    println!("\n{}", "OPPORTUNITIES".heading());
+    println!("Property: {}  |  Period: {}\n", report.property_name.accent(), report.date_range);
 
     if report.opportunities.is_empty() {
         println!("No significant opportunities found.\n");
@@ -782,18 +865,18 @@ pub fn print_opportunities(report: &OpportunitiesReport) {
     println!("{table}\n");
 
     // Diagnostic cards for top 5
-    println!("{}", "DIAGNOSIS".bold().underline());
+    println!("{}", "DIAGNOSIS".heading());
     for (i, opp) in report.opportunities.iter().take(5).enumerate() {
         let kw = opp.keyword.as_deref()
             .or(if opp.url.is_empty() { None } else { Some(opp.url.as_str()) })
             .unwrap_or("-");
-        println!("{}. {} — \"{}\"", i + 1, opp.type_labels.join(" + ").yellow(), kw);
-        println!("   {}", opp.context.dimmed());
+        println!("{}. {} — \"{}\"", i + 1, opp.type_labels.join(" + ").warn(), kw);
+        println!("   {}", opp.context.muted());
 
         // Interpretation (root cause analysis)
         if !opp.interpretation.is_empty() {
             println!();
-            println!("   {}", "Interpretation:".bold());
+            println!("   {}", "Interpretation:".strong());
             for line in wrap_text(&opp.interpretation, 80) {
                 println!("   {}", line);
             }
@@ -802,14 +885,14 @@ pub fn print_opportunities(report: &OpportunitiesReport) {
         // Specific actions
         if !opp.specific_actions.is_empty() {
             println!();
-            println!("   {}", "Actions:".bold());
+            println!("   {}", "Actions:".strong());
             for (j, action) in opp.specific_actions.iter().enumerate() {
                 println!("   {}. {}", j + 1, action);
             }
         }
 
         println!();
-        println!("   {}", format!("Impact: +{:.0} clicks | Effort: {}", opp.estimated_clicks, opp.opportunity_type.effort_label()).dimmed());
+        println!("   {}", format!("Impact: +{:.0} clicks | Effort: {}", opp.estimated_clicks, opp.opportunity_type.effort_label()).muted());
         println!();
     }
 
@@ -824,31 +907,31 @@ pub fn print_action_plan(plan: &crate::domain::ActionPlan) {
         return;
     }
 
-    println!("{}\n", "ACTION PLAN".bold().underline());
+    println!("{}\n", "ACTION PLAN".heading());
 
     if !plan.quick_wins.is_empty() {
-        println!("{}", "Quick Wins (this week)".green().bold());
+        println!("{}", "Quick Wins (this week)".ok());
         for (i, a) in plan.quick_wins.iter().enumerate() {
-            println!("  {}. {} [{}]", i + 1, a.action, a.diagnosis.yellow());
-            println!("     {}", a.reason.dimmed());
+            println!("  {}. {} [{}]", i + 1, a.action, a.diagnosis.warn());
+            println!("     {}", a.reason.muted());
         }
         println!();
     }
 
     if !plan.strategic.is_empty() {
-        println!("{}", "Strategic (this month)".blue().bold());
+        println!("{}", "Strategic (this month)".accent());
         for (i, a) in plan.strategic.iter().enumerate() {
-            println!("  {}. {} [{}]", i + 1, a.action, a.diagnosis.yellow());
-            println!("     {}", a.reason.dimmed());
+            println!("  {}. {} [{}]", i + 1, a.action, a.diagnosis.warn());
+            println!("     {}", a.reason.muted());
         }
         println!();
     }
 
     if !plan.monitoring.is_empty() {
-        println!("{}", "Monitoring (in 2-4 weeks)".dimmed().bold());
+        println!("{}", "Monitoring (in 2-4 weeks)".muted());
         for (i, a) in plan.monitoring.iter().enumerate() {
-            println!("  {}. {} [{}]", i + 1, a.action, a.diagnosis.yellow());
-            println!("     {}", a.reason.dimmed());
+            println!("  {}. {} [{}]", i + 1, a.action, a.diagnosis.warn());
+            println!("     {}", a.reason.muted());
         }
         println!();
     }
@@ -857,8 +940,8 @@ pub fn print_action_plan(plan: &crate::domain::ActionPlan) {
 // ─── Queries report ──────────────────────────────────────────────────────────
 
 pub fn print_queries(report: &QueriesReport) {
-    println!("\n{}", "SEARCH QUERIES".bold().underline());
-    println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+    println!("\n{}", "SEARCH QUERIES".heading());
+    println!("Property: {}  |  Period: {}\n", report.property_name.accent(), report.date_range);
 
     let mut summary = traffic_table();
     summary.add_row(vec!["Total clicks", &format_f64(report.total_clicks)]);
@@ -910,11 +993,11 @@ fn query_signal(q: &crate::domain::QueryRow) -> String {
     use crate::opportunities::expected_ctr;
 
     if q.position <= 10.0 && q.impressions >= 50.0 && q.ctr < expected_ctr(q.position) * 0.7 {
-        "CTR-Fix".yellow().to_string()
+        "CTR-Fix".warn()
     } else if q.position > 10.0 && q.position <= 20.0 && q.impressions >= 100.0 {
-        "Push".blue().to_string()
+        "Push".accent()
     } else if q.ctr > 0.05 && q.clicks > 20.0 {
-        "Strong".green().to_string()
+        "Strong".ok()
     } else {
         String::new()
     }
@@ -929,32 +1012,32 @@ fn weak_page_signal(page: &crate::domain::PageSummary) -> String {
         && page.search.ctr < expected_ctr(page.search.average_position) * 0.7
         && page.engagement_rate < 0.3
     {
-        "Intent mismatch".yellow().to_string()
+        "Intent mismatch".warn()
     } else if page.search.impressions > 200.0
         && page.search.average_position > 0.0
         && page.search.average_position <= 10.0
         && page.search.ctr < expected_ctr(page.search.average_position) * 0.7
     {
-        "Snippet issue".yellow().to_string()
+        "Snippet issue".warn()
     } else if page.search.average_position > 10.0
         && page.search.average_position <= 20.0
         && page.search.impressions > 200.0
     {
-        "Ranking issue".blue().to_string()
+        "Ranking issue".accent()
     } else if page.engagement_rate < 0.3 && page.sessions >= 20 {
-        "Weak engagement".red().to_string()
+        "Weak engagement".err()
     } else if page.bounce_rate > 0.7 && page.sessions >= 20 {
-        "High bounce".red().to_string()
+        "High bounce".err()
     } else {
-        "Needs review".dimmed().to_string()
+        "Needs review".muted()
     }
 }
 
 // ─── AI Traffic report ───────────────────────────────────────────────────────
 
 pub fn print_ai_traffic(report: &AiTrafficReport) {
-    println!("\n{}", "AI TRAFFIC ANALYSIS".bold().underline());
-    println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+    println!("\n{}", "AI TRAFFIC ANALYSIS".heading());
+    println!("Property: {}  |  Period: {}\n", report.property_name.accent(), report.date_range);
 
     let mut summary = traffic_table();
     summary.add_row(vec!["Total sessions", &format_number(report.total_sessions)]);
@@ -962,9 +1045,9 @@ pub fn print_ai_traffic(report: &AiTrafficReport) {
     summary.add_row(vec!["AI Share", &format!("{:.2}%", report.ai_share_pct)]);
     if report.prev_ai_sessions > 0 {
         let trend_str = if report.ai_trend_pct > 0.0 {
-            format!("{:+.0}% (from {})", report.ai_trend_pct, report.prev_ai_sessions).green().to_string()
+            format!("{:+.0}% (from {})", report.ai_trend_pct, report.prev_ai_sessions).ok()
         } else if report.ai_trend_pct < 0.0 {
-            format!("{:+.0}% (from {})", report.ai_trend_pct, report.prev_ai_sessions).red().to_string()
+            format!("{:+.0}% (from {})", report.ai_trend_pct, report.prev_ai_sessions).err()
         } else {
             format!("±0% ({})", report.prev_ai_sessions)
         };
@@ -983,7 +1066,7 @@ pub fn print_ai_traffic(report: &AiTrafficReport) {
     println!("{summary}\n");
 
     if !report.ai_sources.is_empty() {
-        println!("{}", "AI SOURCES".bold().underline());
+        println!("{}", "AI SOURCES".heading());
         let mut table = Table::new();
         table.set_header(vec![
             Cell::new("Source"),
@@ -1003,7 +1086,7 @@ pub fn print_ai_traffic(report: &AiTrafficReport) {
     }
 
     if !report.ai_pages.is_empty() {
-        println!("{}", "PAGES WITH AI TRAFFIC".bold().underline());
+        println!("{}", "PAGES WITH AI TRAFFIC".heading());
         let mut table = Table::new();
         table.set_header(vec![
             Cell::new("#"),
@@ -1024,7 +1107,7 @@ pub fn print_ai_traffic(report: &AiTrafficReport) {
 
     // Content pattern analysis
     if let Some(pattern) = &report.content_pattern {
-        println!("{}", "CONTENT PATTERN".bold().underline());
+        println!("{}", "CONTENT PATTERN".heading());
         for line in wrap_text(pattern, 90) {
             println!("  {}", line);
         }
@@ -1033,7 +1116,7 @@ pub fn print_ai_traffic(report: &AiTrafficReport) {
 
     // Actionable recommendations
     if !report.recommendations.is_empty() {
-        println!("{}", "RECOMMENDATIONS".bold().underline());
+        println!("{}", "RECOMMENDATIONS".heading());
         for (i, rec) in report.recommendations.iter().enumerate() {
             println!("  {}. {}", i + 1, rec);
         }
@@ -1046,10 +1129,10 @@ pub fn print_ai_traffic(report: &AiTrafficReport) {
 // ─── Channels report ─────────────────────────────────────────────────────────
 
 pub fn print_channels(report: &ChannelsReport) {
-    println!("\n{}", "CHANNEL ANALYSIS".bold().underline());
+    println!("\n{}", "CHANNEL ANALYSIS".heading());
     println!(
         "Property: {}  |  Period: {}  |  Sessions: {}\n",
-        report.property_name.cyan(),
+        report.property_name.accent(),
         report.date_range,
         format_number(report.total_sessions)
     );
@@ -1080,15 +1163,15 @@ pub fn print_channels(report: &ChannelsReport) {
 // ─── Clusters report ────────────────────────────────────────────────────────
 
 pub fn print_clusters(report: &ClustersReport) {
-    println!("\n{}", "TOPIC CLUSTERS".bold().underline());
+    println!("\n{}", "TOPIC CLUSTERS".heading());
     println!(
         "Property: {}  |  Period: {}\n",
-        report.property_name.cyan(),
+        report.property_name.accent(),
         report.date_range
     );
 
     if report.clusters.is_empty() {
-        println!("{}\n", "No topic clusters detected.".dimmed());
+        println!("{}\n", "No topic clusters detected.".muted());
     } else {
         let mut table = Table::new();
         table.set_header(vec![
@@ -1130,9 +1213,9 @@ pub fn print_clusters(report: &ClustersReport) {
         println!("{table}\n");
 
         // Strategic interpretation per top cluster
-        println!("{}", "CLUSTER ANALYSIS".bold().underline());
+        println!("{}", "CLUSTER ANALYSIS".heading());
         for c in report.clusters.iter().take(5) {
-            println!("  {} {}", "▸".cyan(), c.name.bold());
+            println!("  {} {}", "▸".accent(), c.name.strong());
 
             // Role assessment
             let role = if c.sessions > 0 && c.queries >= 5 {
@@ -1148,23 +1231,23 @@ pub fn print_clusters(report: &ClustersReport) {
 
             // Strength / weakness
             if c.avg_position > 0.0 && c.avg_position <= 10.0 && c.ctr > 0.03 {
-                println!("    {} Good search position and CTR — this cluster performs well", "✓".green());
+                println!("    {} Good search position and CTR — this cluster performs well", "✓".ok());
             } else if c.avg_position > 0.0 && c.avg_position <= 10.0 && c.ctr < 0.03 && c.impressions > 100.0 {
-                println!("    {} Ranks on page 1 but CTR is below average — snippet optimization opportunity", "⚠".yellow());
+                println!("    {} Ranks on page 1 but CTR is below average — snippet optimization opportunity", "⚠".warn());
             } else if c.avg_position > 10.0 && c.impressions > 200.0 {
-                println!("    {} High visibility on page 2+ — push into top 10 with deeper content", "⚠".yellow());
+                println!("    {} High visibility on page 2+ — push into top 10 with deeper content", "⚠".warn());
             }
 
             // Hub opportunity
             if c.pages <= 1 && c.queries >= 5 {
-                println!("    {} {} queries but only {} page — content hub expansion recommended", "→".blue(), c.queries, c.pages);
+                println!("    {} {} queries but only {} page — content hub expansion recommended", "→".accent(), c.queries, c.pages);
             }
 
             // CTR potential
             if c.ctr_potential > 10.0 {
                 println!(
                     "    {} ~{:.0} additional clicks possible at optimal CTR",
-                    "→".blue(), c.ctr_potential
+                    "→".accent(), c.ctr_potential
                 );
             }
 
@@ -1178,8 +1261,8 @@ pub fn print_clusters(report: &ClustersReport) {
 // ─── Decay report ────────────────────────────────────────────────────────────
 
 pub fn print_decay(report: &DecayReport) {
-    println!("\n{}", "CONTENT DECAY".bold().underline());
-    println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+    println!("\n{}", "CONTENT DECAY".heading());
+    println!("Property: {}  |  Period: {}\n", report.property_name.accent(), report.date_range);
 
     if report.declining_pages.is_empty() {
         println!("No significant content decay detected.\n");
@@ -1216,10 +1299,10 @@ pub fn print_decay(report: &DecayReport) {
             Cell::new(shorten_url(&page.url, 45)),
             Cell::new(format!("{:.0}", page.clicks_before)).set_alignment(CellAlignment::Right),
             Cell::new(format!("{:.0}", page.clicks_after)).set_alignment(CellAlignment::Right),
-            Cell::new(clicks_delta.red().to_string()).set_alignment(CellAlignment::Right),
+            Cell::new(clicks_delta.err()).set_alignment(CellAlignment::Right),
             Cell::new(format!("{:.0}", page.impressions_before)).set_alignment(CellAlignment::Right),
             Cell::new(format!("{:.0}", page.impressions_after)).set_alignment(CellAlignment::Right),
-            Cell::new(impr_delta.red().to_string()).set_alignment(CellAlignment::Right),
+            Cell::new(impr_delta.err()).set_alignment(CellAlignment::Right),
             Cell::new(format!("{:.1}", page.position_before)).set_alignment(CellAlignment::Right),
             Cell::new(if page.position_after > 0.0 { format!("{:.1}", page.position_after) } else { "—".into() }).set_alignment(CellAlignment::Right),
             Cell::new(pos_delta).set_alignment(CellAlignment::Right),
@@ -1233,10 +1316,10 @@ pub fn print_decay(report: &DecayReport) {
 // ─── Devices report ─────────────────────────────────────────────────────────
 
 pub fn print_devices(report: &DevicesReport) {
-    println!("\n{}", "DEVICES".bold().underline());
+    println!("\n{}", "DEVICES".heading());
     println!(
         "Property: {}  |  Period: {}  |  Sessions: {}\n",
-        report.property_name.cyan(),
+        report.property_name.accent(),
         report.date_range,
         format_number(report.total_sessions)
     );
@@ -1267,10 +1350,10 @@ pub fn print_devices(report: &DevicesReport) {
 // ─── Countries report ───────────────────────────────────────────────────────
 
 pub fn print_countries(report: &CountriesReport) {
-    println!("\n{}", "COUNTRIES".bold().underline());
+    println!("\n{}", "COUNTRIES".heading());
     println!(
         "Property: {}  |  Period: {}  |  Sessions: {}\n",
-        report.property_name.cyan(),
+        report.property_name.accent(),
         report.date_range,
         format_number(report.total_sessions)
     );
@@ -1301,11 +1384,11 @@ pub fn print_countries(report: &CountriesReport) {
 // ─── Growth Drivers report ─────────────────────────────────────────────────
 
 pub fn print_growth(report: &GrowthReport) {
-    println!("\n{}", "GROWTH DRIVERS".bold().underline());
-    println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+    println!("\n{}", "GROWTH DRIVERS".heading());
+    println!("Property: {}  |  Period: {}\n", report.property_name.accent(), report.date_range);
 
     if !report.top_growing_pages.is_empty() {
-        println!("{}", "Top growing pages".green().bold());
+        println!("{}", "Top growing pages".ok());
         let mut table = traffic_table();
         table.set_header(vec![
             Cell::new("Page"), Cell::new("Current"), Cell::new("Previous"), Cell::new("Delta"),
@@ -1323,7 +1406,7 @@ pub fn print_growth(report: &GrowthReport) {
     }
 
     if !report.top_declining_pages.is_empty() {
-        println!("{}", "Top declining pages".red().bold());
+        println!("{}", "Top declining pages".err());
         let mut table = traffic_table();
         table.set_header(vec![
             Cell::new("Page"), Cell::new("Current"), Cell::new("Previous"), Cell::new("Delta"),
@@ -1341,7 +1424,7 @@ pub fn print_growth(report: &GrowthReport) {
     }
 
     if !report.top_growing_queries.is_empty() {
-        println!("{}", "Top growing search queries".green().bold());
+        println!("{}", "Top growing search queries".ok());
         let mut table = traffic_table();
         table.set_header(vec![
             Cell::new("Query"), Cell::new("Clicks current"), Cell::new("Clicks previous"), Cell::new("Delta"),
@@ -1358,11 +1441,11 @@ pub fn print_growth(report: &GrowthReport) {
     }
 
     if !report.new_queries.is_empty() {
-        println!("{} {} new queries discovered\n", "i".blue(), report.new_queries.len());
+        println!("{} {} new queries discovered\n", "i".accent(), report.new_queries.len());
     }
 
     if !report.channel_growth.is_empty() {
-        println!("{}", "Channel growth".bold());
+        println!("{}", "Channel growth".strong());
         let mut table = traffic_table();
         table.set_header(vec![
             Cell::new("Channel"), Cell::new("Current"), Cell::new("Previous"), Cell::new("Delta"),
@@ -1385,8 +1468,8 @@ pub fn print_growth(report: &GrowthReport) {
 // ─── Trends report ─────────────────────────────────────────────────────────
 
 pub fn print_trends(report: &TrendsReport) {
-    println!("\n{}", "WEEKLY TRENDS".bold().underline());
-    println!("Property: {}  |  Period: {}\n", report.property_name.cyan(), report.date_range);
+    println!("\n{}", "WEEKLY TRENDS".heading());
+    println!("Property: {}  |  Period: {}\n", report.property_name.accent(), report.date_range);
 
     if !report.weeks.is_empty() {
         let mut table = traffic_table();
@@ -1408,16 +1491,16 @@ pub fn print_trends(report: &TrendsReport) {
     }
 
     if !report.ranking_jumps.is_empty() {
-        println!("{}", "Ranking jumps (>5 positions)".bold());
+        println!("{}", "Ranking jumps (>5 positions)".strong());
         let mut table = traffic_table();
         table.set_header(vec![
             Cell::new("Query"), Cell::new("Current"), Cell::new("Previous"), Cell::new("Delta"),
         ]);
         for r in &report.ranking_jumps {
             let delta_str = if r.delta < 0.0 {
-                format!("{:+.1}", r.delta).green().to_string()
+                format!("{:+.1}", r.delta).ok()
             } else {
-                format!("{:+.1}", r.delta).red().to_string()
+                format!("{:+.1}", r.delta).err()
             };
             table.add_row(vec![
                 Cell::new(shorten_url(&r.label, 40)),
@@ -1457,4 +1540,64 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
         lines.push(String::new());
     }
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::Insight;
+    use runemark::{ColorMode, Console};
+
+    fn insight(severity: InsightSeverity, category: InsightCategory, headline: &str) -> Insight {
+        Insight {
+            severity,
+            category,
+            headline: headline.into(),
+            explanation: format!("why {headline}"),
+        }
+    }
+
+    #[test]
+    fn worst_severity_decides_the_verdict() {
+        let mixed = vec![
+            insight(InsightSeverity::Positive, InsightCategory::Traffic, "a"),
+            insight(InsightSeverity::Warning, InsightCategory::Search, "b"),
+            insight(InsightSeverity::Critical, InsightCategory::Search, "c"),
+        ];
+        assert_eq!(overall_verdict(&mixed), Verdict::Failed);
+
+        assert_eq!(overall_verdict(&mixed[..2]), Verdict::Warning);
+        assert_eq!(overall_verdict(&mixed[..1]), Verdict::Passed);
+        assert_eq!(
+            overall_verdict(&[insight(
+                InsightSeverity::Info,
+                InsightCategory::Trend,
+                "d"
+            )]),
+            Verdict::Info
+        );
+        assert_eq!(overall_verdict(&[]), Verdict::Info);
+    }
+
+    /// The rendered block must group by category and keep every explanation —
+    /// the explanation is the part a reader acts on.
+    #[test]
+    fn insights_render_grouped_with_explanations() {
+        let insights = vec![
+            insight(InsightSeverity::Warning, InsightCategory::Search, "low ctr"),
+            insight(InsightSeverity::Info, InsightCategory::Traffic, "direct share"),
+            insight(InsightSeverity::Warning, InsightCategory::Search, "thin snippets"),
+        ];
+
+        let report = build_insight_report(&insights);
+        let plain = report.render(Console::new(ColorMode::Never, false));
+
+        assert!(plain.contains("Search"), "{plain}");
+        assert!(plain.contains("Traffic"), "{plain}");
+        assert!(plain.contains("low ctr"), "{plain}");
+        assert!(plain.contains("why low ctr"), "{plain}");
+        // Search appears first and carries both of its findings.
+        assert!(plain.find("Search") < plain.find("Traffic"), "{plain}");
+        assert!(plain.contains("thin snippets"), "{plain}");
+    }
 }
