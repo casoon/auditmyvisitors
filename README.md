@@ -37,9 +37,11 @@ Impressions             87,400
 CTR                     2.4%
 Avg. position           14.3
 
-INSIGHTS
-⚠ High impressions, but low CTR
-   87,400 impressions at only 2.4% CTR. Consider improving title and meta description.
+[WARN] Insights
+
+* Search (1)
+  - High impressions, but low CTR
+    Remedy: 87,400 impressions at only 2.4% CTR. Consider improving title and meta description.
 ```
 
 ## Installation
@@ -50,7 +52,7 @@ INSIGHTS
 curl -fsSL https://raw.githubusercontent.com/casoon/auditmyvisitors/main/install.sh | bash
 ```
 
-Installs `auditmyvisitors` to `/usr/local/bin` (or `~/bin` if no write access).
+Installs `auditmyvisitors` to `~/.local/bin`. Set `INSTALL_DIR` to choose a different location.
 
 ### Windows
 
@@ -86,6 +88,9 @@ auditmyvisitors properties select
 # 3. Run your first report
 auditmyvisitors report overview
 ```
+
+Running `auditmyvisitors` with no subcommand opens an interactive menu that walks
+through setup and every report — the same functionality without flags.
 
 ## What it is
 
@@ -161,14 +166,16 @@ auditmyvisitors properties select  # Interactively select active property
 
 ### Reports
 
+Every report accepts `--days` / `-d` and defaults to the last 28 days.
+
 ```bash
-# Site overview (default: last 28 days)
+# Site overview — traffic, search performance, insights
 auditmyvisitors report overview
 auditmyvisitors report overview --days 90
 
 # Top pages
 auditmyvisitors report top-pages
-auditmyvisitors report top-pages --limit 50 --sort-by clicks
+auditmyvisitors report top-pages --limit 50 --sort-by clicks   # sessions | clicks | impressions
 
 # Single page detail
 auditmyvisitors report page --url https://example.com/my-page
@@ -176,6 +183,37 @@ auditmyvisitors report page --url https://example.com/my-page
 # Before/after comparison around a change date
 auditmyvisitors report compare --since 2026-03-01 --before 30 --after 30
 auditmyvisitors report compare --url https://example.com/page --since 2026-03-01
+
+# Prioritised opportunities (impact x confidence / effort) and an action plan
+auditmyvisitors report opportunities
+
+# Query-level search performance, with the best-ranking page per query
+auditmyvisitors report queries --limit 100 --sort-by ctr       # clicks | impressions | ctr | position
+
+# Traffic channels with engagement metrics
+auditmyvisitors report channels
+
+# Referrals from AI assistants and answer engines
+auditmyvisitors report ai-traffic
+
+# Topic clusters across pages and queries
+auditmyvisitors report clusters
+
+# Content decay — pages losing search performance period over period
+auditmyvisitors report decay
+
+# Audience breakdowns
+auditmyvisitors report devices
+auditmyvisitors report countries --limit 30
+```
+
+### Snapshots
+
+Each overview run stores its key metrics locally, so the next run can compare
+against it without fetching history again.
+
+```bash
+auditmyvisitors snapshot list
 ```
 
 ### Export
