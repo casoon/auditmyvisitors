@@ -10,8 +10,8 @@ pub async fn run(config: &mut AppConfig) -> anyhow::Result<()> {
     // Guard: interactive mode needs a terminal
     if !std::io::stdin().is_terminal() {
         anyhow::bail!(
-            "Kein Subcommand angegeben und stdin ist kein Terminal.\n\
-             Nutze `auditmyvisitors --help` fuer die Befehlsuebersicht."
+            "No subcommand given and stdin is not a terminal.\n\
+             Run `auditmyvisitors --help` for the list of commands."
         );
     }
 

@@ -11,7 +11,7 @@ pub async fn refresh_access_token(tokens: &StoredTokens) -> Result<StoredTokens>
     let refresh_token = tokens
         .refresh_token
         .as_deref()
-        .ok_or_else(|| AppError::TokenRefresh("Kein Refresh-Token vorhanden — bitte erneut einloggen".into()))?;
+        .ok_or_else(|| AppError::TokenRefresh("No refresh token stored — run `auth login` again".into()))?;
 
     let client = reqwest::Client::new();
 
@@ -37,14 +37,14 @@ pub async fn refresh_access_token(tokens: &StoredTokens) -> Result<StoredTokens>
             .get("error_description")
             .or_else(|| body.get("error"))
             .and_then(|v| v.as_str())
-            .unwrap_or("unbekannter Fehler")
+            .unwrap_or("unknown error")
             .to_string();
         return Err(AppError::TokenRefresh(msg));
     }
 
     let access_token = body["access_token"]
         .as_str()
-        .ok_or_else(|| AppError::TokenRefresh("Kein access_token in der Refresh-Antwort".into()))?
+        .ok_or_else(|| AppError::TokenRefresh("No access_token in the refresh response".into()))?
         .to_string();
 
     let expires_at = body["expires_in"]
@@ -63,7 +63,7 @@ pub async fn refresh_access_token(tokens: &StoredTokens) -> Result<StoredTokens>
     };
 
     save_tokens(&refreshed)
-        .map_err(|e| AppError::Auth(format!("Tokens konnten nicht gespeichert werden: {e}")))?;
+        .map_err(|e| AppError::Auth(format!("Cannot store the tokens: {e}")))?;
 
     Ok(refreshed)
 }

@@ -26,8 +26,8 @@ const SCOPES: &[&str] = &[
 pub async fn run_oauth_login() -> anyhow::Result<()> {
     if credentials::CLIENT_ID == "GOOGLE_CLIENT_ID_NOT_SET" {
         bail!(
-            "Diese Binary wurde ohne Google-OAuth-Credentials gebaut.\n\
-            Bitte wende dich an den Entwickler oder baue das Tool selbst:\n\n\
+            "This binary was built without Google OAuth credentials.\n\
+            Use an official release, or build it yourself:\n\n\
             GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=xxx cargo build --release\n"
         );
     }
@@ -57,15 +57,15 @@ pub async fn run_oauth_login() -> anyhow::Result<()> {
         code_challenge = urlencoding::encode(&code_challenge),
     );
 
-    println!("Browser wird geöffnet für Google-Login...");
-    println!("Falls sich der Browser nicht öffnet, besuche:\n{auth_url}\n");
+    println!("Opening your browser for the Google login…");
+    println!("If it does not open, visit:\n{auth_url}\n");
 
-    webbrowser::open(&auth_url).context("Browser konnte nicht geöffnet werden")?;
+    webbrowser::open(&auth_url).context("Cannot open a browser")?;
 
-    println!("Warte auf Weiterleitung von Google...");
+    println!("Waiting for Google to redirect back…");
 
     let query_string = super::server::wait_for_redirect(REDIRECT_PORT)
-        .context("OAuth-Redirect-Listener fehlgeschlagen")?;
+        .context("The local OAuth redirect listener failed")?;
 
     let params: HashMap<String, String> = url::form_urlencoded::parse(query_string.as_bytes())
         .into_owned()
@@ -73,22 +73,22 @@ pub async fn run_oauth_login() -> anyhow::Result<()> {
 
     let returned_state = params.get("state").map(String::as_str).unwrap_or("");
     if returned_state != state {
-        bail!("OAuth-State stimmt nicht überein — möglicher CSRF-Angriff. Abgebrochen.");
+        bail!("OAuth state mismatch — possible CSRF attempt. Aborted.");
     }
 
     if let Some(error) = params.get("error") {
-        bail!("Google hat einen Fehler zurückgegeben: {error}");
+        bail!("Google returned an error: {error}");
     }
 
     let code = params
         .get("code")
-        .context("Kein Autorisierungscode in der Weiterleitung")?
+        .context("No authorization code in the redirect")?
         .clone();
 
     let tokens = exchange_code_for_tokens(&code, &code_verifier, &redirect_uri).await?;
-    save_tokens(&tokens).context("Tokens konnten nicht gespeichert werden")?;
+    save_tokens(&tokens).context("Cannot store the tokens")?;
 
-    println!("Login erfolgreich. Tokens gespeichert.");
+    println!("Login successful — tokens stored.");
     Ok(())
 }
 
@@ -113,28 +113,28 @@ async fn exchange_code_for_tokens(
         .form(&params)
         .send()
         .await
-        .context("Token-Austausch fehlgeschlagen")?;
+        .context("Token exchange failed")?;
 
     let status = response.status();
     let body: serde_json::Value = response
         .json()
         .await
-        .context("Token-Antwort konnte nicht geparst werden")?;
+        .context("Cannot parse the token response")?;
 
     if !status.is_success() {
         bail!(
-            "Token-Austausch fehlgeschlagen ({}): {}",
+            "Token exchange failed ({}): {}",
             status,
             body.get("error_description")
                 .or_else(|| body.get("error"))
                 .and_then(|v| v.as_str())
-                .unwrap_or("unbekannter Fehler")
+                .unwrap_or("unknown error")
         );
     }
 
     let access_token = body["access_token"]
         .as_str()
-        .context("Kein access_token in der Antwort")?
+        .context("No access_token in the response")?
         .to_string();
 
     let refresh_token = body["refresh_token"].as_str().map(String::from);
