@@ -1,5 +1,4 @@
 /target
-Cargo.lock
 todo.md
 /output
 *.pdf
@@ -7,3 +6,5 @@ todo.md
 concept.md
 ziel.md
 strategy.md
+.DS_Store
+/plan/
