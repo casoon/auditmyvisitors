@@ -61,7 +61,7 @@ jobs:
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.artifact }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
@@ -84,6 +84,9 @@ jobs:
         with:
           files: artifacts/*
           generate_release_notes: true
+          # A tag with a hyphen (v1.2.3-rc.1) is a pre-release, so the release
+          # path can be exercised without it looking like a shipped version.
+          prerelease: ${{ contains(github.ref_name, '-') }}
           body: |
             ## Installation
 
