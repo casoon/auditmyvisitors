@@ -13,7 +13,15 @@ case "$OS" in
   Darwin)
     case "$ARCH" in
       arm64)  ARTIFACT="auditmyvisitors-macos-arm64" ;;
-      x86_64) ARTIFACT="auditmyvisitors-macos-x86_64" ;;
+      x86_64)
+        echo "Intel Macs are no longer supported."
+        echo ""
+        echo "If this is an Apple Silicon Mac, you are in a Rosetta shell —"
+        echo "open a native terminal and run the installer again."
+        echo ""
+        echo "Otherwise, build from source: https://github.com/$REPO#build-from-source"
+        exit 1
+        ;;
       *)      echo "Unsupported architecture: $ARCH" && exit 1 ;;
     esac
     ;;

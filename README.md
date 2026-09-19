@@ -54,6 +54,8 @@ curl -fsSL https://raw.githubusercontent.com/casoon/auditmyvisitors/main/install
 
 Installs `auditmyvisitors` to `~/.local/bin`. Set `INSTALL_DIR` to choose a different location.
 
+macOS builds are Apple Silicon only. On an Intel Mac, build from source.
+
 ### Windows
 
 Download the latest binary from the [releases page](https://github.com/casoon/auditmyvisitors/releases/latest) and add it to your `PATH`.

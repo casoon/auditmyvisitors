@@ -15,9 +15,10 @@
   `GOOGLE_CLIENT_SECRET` beim Build enthält das Binary Platzhalter und schlägt beim
   ersten Login mit einer klaren Meldung fehl. Deshalb `make build` / `make release`
   statt `cargo build` direkt.
-- **Release-Plattformen.** Der Workflow baut macOS arm64, macOS x86_64, Linux x86_64
-  (musl) und Windows x86_64. Intel-macOS bleibt in der Matrix, weil `install.sh`
-  Darwin/x86_64 auf dieses Artefakt abbildet.
+- **Release-Plattformen.** Der Workflow baut macOS arm64, Linux x86_64 (musl) und
+  Windows x86_64. Intel-macOS wird nicht mehr unterstützt; `install.sh` erkennt
+  Darwin/x86_64 und verweist auf den Build aus dem Quellcode, statt ein fehlendes
+  Artefakt herunterzuladen.
 - **MSRV 1.85**, vorgegeben durch `runemark`. Die Edition bleibt 2021.
 - **Farbausgabe** folgt `NO_COLOR` und schreibt bei Umleitung reinen Text — durchgesetzt
   durch die eine `Console` in `src/ui/style.rs`.

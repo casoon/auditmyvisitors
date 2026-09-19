@@ -20,13 +20,6 @@ jobs:
             artifact: auditmyvisitors-macos-arm64
             binary: auditmyvisitors
 
-          # Intel Macs: install.sh maps Darwin/x86_64 to this artifact, so
-          # dropping it turns the one-line installer into a bare 404 there.
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact: auditmyvisitors-macos-x86_64
-            binary: auditmyvisitors
-
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             artifact: auditmyvisitors-linux-x86_64
