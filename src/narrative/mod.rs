@@ -115,18 +115,17 @@ fn build_state_paragraph(input: &NarrativeInput) -> Option<String> {
     }
 
     // Check search potential gap
-    if tension.is_none() {
-        if overview.search.average_position > 0.0
-            && overview.search.average_position <= 10.0
-            && overview.search.ctr < 0.03
-            && overview.search.impressions > 200.0
-        {
-            tension = Some(
-                "but a large part of the search potential remains untapped: \
-                 the site ranks well on page 1 yet achieves below-average click rates"
-                    .into(),
-            );
-        }
+    if tension.is_none()
+        && overview.search.average_position > 0.0
+        && overview.search.average_position <= 10.0
+        && overview.search.ctr < 0.03
+        && overview.search.impressions > 200.0
+    {
+        tension = Some(
+            "but a large part of the search potential remains untapped: \
+             the site ranks well on page 1 yet achieves below-average click rates"
+                .into(),
+        );
     }
 
     // Organic share context

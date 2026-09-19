@@ -183,7 +183,7 @@ pub fn build_view_model(
         ("Other",            t.other_sessions),
     ];
     channels.retain(|(_, n)| *n > 0);
-    channels.sort_by(|a, b| b.1.cmp(&a.1));
+    channels.sort_by_key(|c| std::cmp::Reverse(c.1));
     let channel_rows = channels.iter().map(|(name, n)| ChannelRow {
         channel: name.to_string(),
         sessions: fmt_num(*n),
@@ -275,7 +275,7 @@ pub fn build_view_model(
     // All pages sorted by sessions (main comprehensive list, up to limit)
     let all_pages: Vec<PageRow> = top_pages.pages.iter()
         .take(limit)
-        .map(|p| page_row(p))
+        .map(&page_row)
         .collect();
 
     // Scored analyses — capped at 20 / 20 / 10 regardless of limit
@@ -283,9 +283,9 @@ pub fn build_view_model(
     let weakest    = page_audit::ranking(&top_pages.pages, 20, page_audit::weakness_score);
     let isolated   = page_audit::ranking(&top_pages.pages, 10, |p| page_audit::isolated_score(p, tracking_enabled));
 
-    let top_pages_rows: Vec<PageRow>   = strongest.iter().map(|p| page_row(p)).collect();
-    let weakest_pages: Vec<PageRow>    = weakest.iter().map(|p| page_row(p)).collect();
-    let isolated_pages: Vec<PageRow>   = isolated.iter().map(|p| page_row(p)).collect();
+    let top_pages_rows: Vec<PageRow>   = strongest.iter().map(&page_row).collect();
+    let weakest_pages: Vec<PageRow>    = weakest.iter().map(&page_row).collect();
+    let isolated_pages: Vec<PageRow>   = isolated.iter().map(&page_row).collect();
 
     // Click-Gap: Pos 4–15, CTR < 2%, Impressions > 100
     let mut click_gap: Vec<&crate::domain::PageSummary> = top_pages.pages.iter()
@@ -303,7 +303,7 @@ pub fn build_view_model(
     let mut invisible: Vec<&crate::domain::PageSummary> = top_pages.pages.iter()
         .filter(|p| p.search.impressions == 0.0 && p.sessions > 10)
         .collect();
-    invisible.sort_by(|a, b| b.sessions.cmp(&a.sessions));
+    invisible.sort_by_key(|p| std::cmp::Reverse(p.sessions));
     let invisible_pages: Vec<PageRow> = invisible.iter().take(50).map(|p| page_row(p)).collect();
 
     let top_page_diagnoses: Vec<PageDiagnosisRow> = strongest.iter().take(10).map(|p| PageDiagnosisRow {

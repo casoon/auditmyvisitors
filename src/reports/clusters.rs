@@ -209,7 +209,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         })
         .collect();
 
-    cluster_list.sort_by(|a, b| b.sessions.cmp(&a.sessions));
+    cluster_list.sort_by_key(|c| std::cmp::Reverse(c.sessions));
     cluster_list.truncate(20);
 
     // ── Insights ───────────────────────────────────────────────────────────

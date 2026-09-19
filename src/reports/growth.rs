@@ -152,7 +152,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             }
         })
         .collect();
-    channel_growth.sort_by(|a, b| b.delta.cmp(&a.delta));
+    channel_growth.sort_by_key(|c| std::cmp::Reverse(c.delta));
 
     // ── Query growth (SC) ───────────────────────────────────────────────────
     let mut q_cur_map: HashMap<String, f64> = HashMap::new();

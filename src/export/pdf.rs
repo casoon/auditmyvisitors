@@ -497,7 +497,7 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
             Callout::warning(
                 "Position 4–15, CTR < 2%, Impressions > 100. \
                  Improving title and meta description can generate clicks immediately."
-            ).with_title(&format!("Click-Gap: {} Pages with Pos 4–15 and CTR < 2%", vm.click_gap_pages.len()))
+            ).with_title(format!("Click-Gap: {} Pages with Pos 4–15 and CTR < 2%", vm.click_gap_pages.len()))
         );
         let mut gap_table = AuditTable::new(vec![
             TableColumn::new("Page").with_width("32%"),
@@ -556,7 +556,7 @@ pub fn generate(vm: &ReportViewModel, output_path: &str) -> anyhow::Result<()> {
                 "These pages receive traffic (direct/referral/social) but have zero impressions \
                  in Search Console — they are not ranking in Google at all. \
                  Check indexing status and consider improving content or internal linking."
-            ).with_title(&format!("{} Pages: Traffic but Not Indexed / Not Ranking", vm.invisible_pages.len()))
+            ).with_title(format!("{} Pages: Traffic but Not Indexed / Not Ranking", vm.invisible_pages.len()))
         );
         let mut inv_table = AuditTable::new(vec![
             TableColumn::new("Page").with_width("45%"),

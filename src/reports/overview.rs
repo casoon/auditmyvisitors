@@ -161,7 +161,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         })
         .collect();
 
-    all_sources.sort_by(|a, b| b.sessions.cmp(&a.sessions));
+    all_sources.sort_by_key(|s| std::cmp::Reverse(s.sessions));
 
     let ai_sources: Vec<SourceRow> = all_sources
         .iter()

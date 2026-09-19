@@ -119,7 +119,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         }
     }
 
-    ai_sources.sort_by(|a, b| b.sessions.cmp(&a.sessions));
+    ai_sources.sort_by_key(|s| std::cmp::Reverse(s.sessions));
     let ai_sessions: i64 = ai_sources.iter().map(|s| s.sessions).sum();
     let ai_share_pct = if total_sessions > 0 {
         ai_sessions as f64 / total_sessions as f64 * 100.0

@@ -13,7 +13,7 @@ pub fn cluster_from_url(url: &str) -> Option<String> {
     let path = url
         .strip_prefix("https://")
         .or_else(|| url.strip_prefix("http://"))
-        .map(|u| u.splitn(2, '/').nth(1).unwrap_or(u))
+        .map(|u| u.split_once('/').map(|x| x.1).unwrap_or(u))
         .unwrap_or(url);
 
     let segments: Vec<&str> = path
