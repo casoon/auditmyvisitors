@@ -52,6 +52,25 @@ pub fn save_tokens(tokens: &StoredTokens) -> anyhow::Result<()> {
         .context("Cannot serialize tokens")?;
     std::fs::write(&path, content)
         .with_context(|| format!("Cannot write tokens to {}", path.display()))?;
+    restrict_to_owner(&path)?;
+    Ok(())
+}
+
+/// Restrict a file to owner read/write.
+///
+/// The tokens grant read access to the user's Analytics and Search Console data,
+/// so they must not be readable by other accounts on a shared machine. On Windows
+/// the per-user profile directory already provides that, and there is no direct
+/// equivalent to a Unix mode.
+#[cfg(unix)]
+fn restrict_to_owner(path: &std::path::Path) -> anyhow::Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
+        .with_context(|| format!("Cannot restrict permissions on {}", path.display()))
+}
+
+#[cfg(not(unix))]
+fn restrict_to_owner(_path: &std::path::Path) -> anyhow::Result<()> {
     Ok(())
 }
 
