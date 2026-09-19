@@ -159,7 +159,7 @@ pub async fn build(
     // ── Convert raw newUsers count → share ─────────────────────────────────
     for page in page_map.values_mut() {
         if page.sessions > 0 {
-            page.new_user_share = page.new_user_share / page.sessions as f64;
+            page.new_user_share /= page.sessions as f64;
         }
     }
 
@@ -167,9 +167,9 @@ pub async fn build(
     let mut pages: Vec<PageSummary> = page_map.into_values().collect();
 
     match sort_by {
-        "clicks"      => pages.sort_by(|a, b| b.search.clicks.partial_cmp(&a.search.clicks).unwrap()),
-        "impressions" => pages.sort_by(|a, b| b.search.impressions.partial_cmp(&a.search.impressions).unwrap()),
-        _             => pages.sort_by(|a, b| b.sessions.cmp(&a.sessions)),
+        "clicks"      => pages.sort_by(|a, b| b.search.clicks.total_cmp(&a.search.clicks)),
+        "impressions" => pages.sort_by(|a, b| b.search.impressions.total_cmp(&a.search.impressions)),
+        _             => pages.sort_by_key(|p| std::cmp::Reverse(p.sessions)),
     }
 
     pages.truncate(limit);

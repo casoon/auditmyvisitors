@@ -459,7 +459,7 @@ pub fn build_action_plan(opportunities: &[Opportunity]) -> ActionPlan {
                      else { "Low" };
 
         let target = op.keyword.as_deref()
-            .unwrap_or_else(|| op.url.as_str());
+            .unwrap_or(op.url.as_str());
 
         let reason = format!(
             "\"{}\" — {} (score {:.0}, +{:.0} clicks possible)",
@@ -546,6 +546,7 @@ mod tests {
             ctr: 0.01,     // 1% actual, position 3 expects 11%
             position: 3.0,
             intent: None,
+            top_page: None,
         }];
         let ops = generate_opportunities(&queries, &[], 28, &[]);
         assert!(!ops.is_empty());
@@ -562,6 +563,7 @@ mod tests {
             ctr: 0.05,
             position: 8.0,
             intent: None,
+            top_page: None,
         }];
         let ops = generate_opportunities(&queries, &[], 28, &[]);
         let ranking = ops.iter().find(|o| o.opportunity_type == OpportunityType::RankingProblem);
@@ -577,6 +579,7 @@ mod tests {
             ctr: 0.007,
             position: 12.0,
             intent: None,
+            top_page: None,
         }];
         let ops = generate_opportunities(&queries, &[], 28, &[]);
         // After grouping, the merged entry should include ContentExpansion in its type labels
@@ -624,6 +627,7 @@ mod tests {
             ctr: 0.01,
             position: 3.0,
             intent: None,
+            top_page: None,
         }];
         let ops = generate_opportunities(&queries, &[], 28, &[]);
         assert!(ops.is_empty(), "Low-impression queries should be skipped");
@@ -638,6 +642,7 @@ mod tests {
             ctr: 0.01,
             position: 7.0, // qualifies for both CTR fix (pos 1-10) and ranking push (pos 5-15)
             intent: None,
+            top_page: None,
         }];
         let ops = generate_opportunities(&queries, &[], 28, &[]);
         // Should be grouped into a single entry
@@ -658,6 +663,7 @@ mod tests {
             ctr: 0.01,     // 1%, position 1 expects 28%
             position: 1.0,
             intent: None,
+            top_page: None,
         }];
         let ops = raw_opportunities(&queries, &[], &[]);
         let snippet = ops.iter().find(|o| o.opportunity_type == OpportunityType::SnippetProblem).unwrap();
@@ -677,6 +683,7 @@ mod tests {
             ctr: 0.01,
             position: 3.0,
             intent: None,
+            top_page: None,
         }).collect();
         let ops = generate_opportunities(&queries, &[], 28, &[]);
         assert!(ops.len() <= 15, "Should cap at 15 opportunities, got {}", ops.len());

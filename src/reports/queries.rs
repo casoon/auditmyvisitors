@@ -1,10 +1,26 @@
+use std::collections::HashMap;
+
 use crate::config::AppConfig;
 use crate::domain::{Insight, InsightCategory, InsightSeverity, QueriesReport, QueryRow};
 use crate::errors::Result;
-use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::google::search_console::{query, SearchAnalyticsRequest, SearchAnalyticsRow};
 use crate::helpers;
 use crate::intent;
 use crate::opportunities::expected_ctr;
+
+/// Map each query to the page it ranks best on (lowest average position wins).
+fn best_page_per_query(rows: &[SearchAnalyticsRow]) -> HashMap<String, String> {
+    let mut best: HashMap<String, (String, f64)> = HashMap::new();
+    for row in rows {
+        let query = row.keys.first().cloned().unwrap_or_default();
+        let page = row.keys.get(1).cloned().unwrap_or_default();
+        let entry = best.entry(query).or_insert((page.clone(), row.position));
+        if row.position < entry.1 {
+            *entry = (page, row.position);
+        }
+    }
+    best.into_iter().map(|(q, (page, _))| (q, page)).collect()
+}
 
 pub async fn build(
     config: &AppConfig,
@@ -47,16 +63,7 @@ pub async fn build(
     let resp = resp?;
     let resp_pages = resp_pages?;
 
-    // Build query → best page map (lowest position wins)
-    let mut query_top_page: std::collections::HashMap<String, (String, f64)> = std::collections::HashMap::new();
-    for row in &resp_pages.rows {
-        let q = row.keys.first().cloned().unwrap_or_default();
-        let page = row.keys.get(1).cloned().unwrap_or_default();
-        let entry = query_top_page.entry(q).or_insert((page.clone(), row.position));
-        if row.position < entry.1 {
-            *entry = (page, row.position);
-        }
-    }
+    let query_top_page = best_page_per_query(&resp_pages.rows);
 
     let brand_terms = &config.report.brand_terms;
 
@@ -66,7 +73,7 @@ pub async fn build(
         .map(|r| {
             let q = r.keys.first().cloned().unwrap_or_default();
             let classified = intent::classify(&q, brand_terms);
-            let top_page = query_top_page.get(&q).map(|(p, _)| p.clone());
+            let top_page = query_top_page.get(&q).cloned();
             QueryRow {
                 query: q,
                 clicks: r.clicks,
@@ -81,10 +88,10 @@ pub async fn build(
 
     // Sort
     match sort_by {
-        "impressions" => queries.sort_by(|a, b| b.impressions.partial_cmp(&a.impressions).unwrap()),
-        "ctr" => queries.sort_by(|a, b| b.ctr.partial_cmp(&a.ctr).unwrap()),
-        "position" => queries.sort_by(|a, b| a.position.partial_cmp(&b.position).unwrap()),
-        _ => queries.sort_by(|a, b| b.clicks.partial_cmp(&a.clicks).unwrap()),
+        "impressions" => queries.sort_by(|a, b| b.impressions.total_cmp(&a.impressions)),
+        "ctr" => queries.sort_by(|a, b| b.ctr.total_cmp(&a.ctr)),
+        "position" => queries.sort_by(|a, b| a.position.total_cmp(&b.position)),
+        _ => queries.sort_by(|a, b| b.clicks.total_cmp(&a.clicks)),
     }
 
     queries.truncate(limit);
@@ -216,3 +223,53 @@ pub async fn build(
     })
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(query: &str, page: &str, position: f64) -> SearchAnalyticsRow {
+        SearchAnalyticsRow {
+            keys: vec![query.into(), page.into()],
+            clicks: 0.0,
+            impressions: 0.0,
+            ctr: 0.0,
+            position,
+        }
+    }
+
+    #[test]
+    fn best_page_wins_on_lowest_position() {
+        let rows = vec![
+            row("rust cli", "https://example.com/blog/cli", 8.4),
+            row("rust cli", "https://example.com/docs/cli", 3.1),
+            row("rust cli", "https://example.com/", 19.0),
+        ];
+        let map = best_page_per_query(&rows);
+        assert_eq!(map.get("rust cli").map(String::as_str), Some("https://example.com/docs/cli"));
+    }
+
+    #[test]
+    fn queries_are_kept_apart() {
+        let rows = vec![
+            row("alpha", "https://example.com/a", 5.0),
+            row("beta", "https://example.com/b", 2.0),
+        ];
+        let map = best_page_per_query(&rows);
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get("beta").map(String::as_str), Some("https://example.com/b"));
+    }
+
+    #[test]
+    fn row_without_page_dimension_yields_empty_page() {
+        let rows = vec![SearchAnalyticsRow {
+            keys: vec!["lonely".into()],
+            clicks: 0.0,
+            impressions: 0.0,
+            ctr: 0.0,
+            position: 4.0,
+        }];
+        let map = best_page_per_query(&rows);
+        assert_eq!(map.get("lonely").map(String::as_str), Some(""));
+    }
+}
