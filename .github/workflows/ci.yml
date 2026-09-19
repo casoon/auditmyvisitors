@@ -46,3 +46,21 @@ jobs:
       # src/storage, which the Linux job never compiles.
       - name: Check
         run: cargo check --all-targets
+
+  msrv:
+    name: Check MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Pinned to the rust-version in Cargo.toml. A declared minimum that
+      # nothing builds against is a guess, not a promise. The number holds for
+      # the committed Cargo.lock: it is the dependency tree, not this crate,
+      # that sets it — image and time need 1.88, runemark only 1.85.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.88.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check
+        run: cargo check --all-targets

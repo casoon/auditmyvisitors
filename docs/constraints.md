@@ -19,7 +19,10 @@
   Windows x86_64. Intel-macOS wird nicht mehr unterstützt; `install.sh` erkennt
   Darwin/x86_64 und verweist auf den Build aus dem Quellcode, statt ein fehlendes
   Artefakt herunterzuladen.
-- **MSRV 1.85**, vorgegeben durch `runemark`. Die Edition bleibt 2021.
+- **MSRV 1.88**, in CI gegen einen 1.88-Toolchain geprüft. Den Wert setzt nicht
+  dieses Crate, sondern der Abhängigkeitsbaum: `image` und `time` verlangen 1.88,
+  `runemark` nur 1.85. Er gilt für das committete `Cargo.lock` — ohne Lockfile wäre
+  die Zahl eine Momentaufnahme. Die Edition bleibt 2021.
 - **Farbausgabe** folgt `NO_COLOR` und schreibt bei Umleitung reinen Text — durchgesetzt
   durch die eine `Console` in `src/ui/style.rs`.
 - **GA4-Datenhorizont.** Aggregierte Standardberichte, kein Rohdatenzugriff: keine
@@ -35,5 +38,3 @@
   Privacy Policy. `https://auditmyvisitors.casoon.de/` antwortet mit 200, die im README
   verlinkte `/datenschutz` mit 404 — die Anforderung ist damit aktuell nicht erfüllt.
   Die Seite liegt in einem anderen Repository. (Issue #1)
-- `rust-version = "1.85"` ist gesetzt, wird aber in CI nicht gegen einen 1.85-Toolchain
-  geprüft — CI baut auf `stable`. (Issue #3)

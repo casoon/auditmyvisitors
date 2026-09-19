@@ -13,7 +13,7 @@ gegen die Google-APIs, mit dessen eigenem OAuth-Login.
 
 | Bereich | Umsetzung |
 |---|---|
-| Sprache / Edition | Rust, Edition 2021, MSRV 1.85 |
+| Sprache / Edition | Rust, Edition 2021, MSRV 1.88 |
 | Async-Runtime | `tokio` (Feature `full`) |
 | HTTP | `reqwest` mit `rustls-tls`, ohne default features |
 | CLI | `clap` (derive) + `inquire` für den interaktiven Modus |
@@ -73,10 +73,12 @@ es keine Tests.
 
 - `make build` / `make release` — sourcen `.env.local` (OAuth-Credentials) und bauen
 - `.github/workflows/ci.yml` — auf Push und PR gegen `main`: Clippy mit
-  `-D warnings` und `cargo test` auf Linux, dazu `cargo check --all-targets` auf
-  Windows für die `#[cfg(not(unix))]`-Pfade
-- `.github/workflows/release.yml` — baut auf Tag `v*` für macOS arm64, macOS x86_64,
-  Linux x86_64 (musl) und Windows x86_64 und hängt die Binaries ans Release
+  `-D warnings` und `cargo test` auf Linux, `cargo check --all-targets` auf Windows
+  für die `#[cfg(not(unix))]`-Pfade, und derselbe Check gegen einen auf die MSRV
+  gepinnten 1.88-Toolchain
+- `.github/workflows/release.yml` — baut auf Tag `v*` für macOS arm64, Linux x86_64
+  (musl) und Windows x86_64 und hängt die Binaries ans Release. Ein Tag mit
+  Bindestrich (`v1.2.3-rc.1`) erscheint als Pre-Release.
 - `Cargo.lock` ist versioniert, damit Release-Builds reproduzierbar sind
 
 ## Weiterführend
