@@ -10,6 +10,7 @@ use crate::domain::{
     ChannelGrowthRow, GrowthReport, GrowthRow, Insight, InsightCategory, InsightSeverity, QueryRow,
 };
 use crate::errors::Result;
+use crate::google::{GA4_JOIN_ROWS, SC_MAX_ROWS};
 use crate::google::api::GoogleApi;
 use crate::google::analytics_data::{DateRange, ReportRequest};
 use crate::google::search_console::SearchAnalyticsRequest;
@@ -46,8 +47,11 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
                 dimensions: vec!["pagePath".into()],
                 metrics: vec!["sessions".into()],
                 dimension_filter: None,
-                limit: Some(200),
-                order_by: None,
+                limit: Some(GA4_JOIN_ROWS),
+                order_by: Some(vec![serde_json::json!({
+                    "metric": { "metricName": "sessions" },
+                    "desc": true
+                })]),
             },
         ),
         // GA4: sessions per channel (current + previous)
@@ -58,7 +62,7 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
                 dimensions: vec!["sessionDefaultChannelGroup".into()],
                 metrics: vec!["sessions".into()],
                 dimension_filter: None,
-                limit: Some(20),
+                limit: Some(200),
                 order_by: None,
             },
         ),
@@ -70,7 +74,7 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
                 end_date: helpers::yesterday(),
                 dimensions: vec!["query".into()],
                 page_filter: None,
-                row_limit: Some(500),
+                row_limit: Some(SC_MAX_ROWS),
             },
         ),
         // SC: queries previous period
@@ -81,7 +85,7 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
                 end_date: helpers::days_ago(days + 1),
                 dimensions: vec!["query".into()],
                 page_filter: None,
-                row_limit: Some(500),
+                row_limit: Some(SC_MAX_ROWS),
             },
         ),
     );

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use crate::config::AppConfig;
 use crate::domain::{Insight, InsightCategory, InsightSeverity, QueriesReport, QueryRow};
 use crate::errors::Result;
+use crate::google::{SC_MAX_ROWS};
 use crate::google::api::GoogleApi;
 use crate::google::search_console::{SearchAnalyticsRequest, SearchAnalyticsRow};
 use crate::helpers;
@@ -45,7 +46,7 @@ pub async fn build(
         end_date: helpers::yesterday(),
         dimensions: vec!["query".into()],
         page_filter: None,
-        row_limit: Some(500),
+        row_limit: Some(5_000),
     };
 
     let req_pages = SearchAnalyticsRequest {
@@ -54,7 +55,7 @@ pub async fn build(
         end_date: helpers::yesterday(),
         dimensions: vec!["query".into(), "page".into()],
         page_filter: None,
-        row_limit: Some(5000),
+        row_limit: Some(SC_MAX_ROWS),
     };
 
     let (resp, resp_pages) = tokio::join!(

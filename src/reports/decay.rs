@@ -1,6 +1,7 @@
 use crate::config::AppConfig;
 use crate::domain::{DecayPage, DecayReport, Insight, InsightCategory, InsightSeverity};
 use crate::errors::Result;
+use crate::google::{SC_MAX_ROWS};
 use crate::google::api::GoogleApi;
 use crate::google::search_console::SearchAnalyticsRequest;
 use crate::helpers;
@@ -23,7 +24,7 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
         end_date: helpers::yesterday(),
         dimensions: vec!["page".into()],
         page_filter: None,
-        row_limit: Some(500),
+        row_limit: Some(SC_MAX_ROWS),
     };
 
     // Previous period: N*2..N+1 days ago
@@ -33,7 +34,7 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
         end_date: helpers::days_ago(days + 1),
         dimensions: vec!["page".into()],
         page_filter: None,
-        row_limit: Some(500),
+        row_limit: Some(SC_MAX_ROWS),
     };
 
     let (current_resp, prev_resp) = tokio::join!(

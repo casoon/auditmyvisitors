@@ -65,8 +65,14 @@ dem, was möglich gewesen wäre — bei GA4 über `rowCount`, bei der Search Con
 ab, `ui::print_truncation_warnings` gibt sie aus. Die Report-Module bleiben davon
 unberührt; genau deshalb steht es dort und nicht in fünfzehn Modulen.
 
-Gepaginiert wird noch nicht — die Warnung sagt, dass Zahlen unvollständig sind,
-sie macht sie nicht vollständig.
+Requests, die einen Join speisen — eine Seite über zwei Zeiträume hinweg, eine
+Query zu ihrer besten Seite — fragen das dokumentierte Maximum ab
+(`google::SC_MAX_ROWS` = 25.000 für die Search Console, `GA4_JOIN_ROWS` = 10.000
+als Arbeitsgrenze für GA4, dessen Antwort bei 250.000 Zeilen kappt). Requests,
+die nur eine sortierte Top-N-Liste brauchen, tun das nicht.
+
+Gepaginiert wird nicht. `startRow` bzw. `offset` sind ungenutzt; jenseits der
+Maxima greift die Warnung.
 
 ## Report-Schicht
 

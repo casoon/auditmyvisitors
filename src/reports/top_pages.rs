@@ -1,6 +1,7 @@
 use crate::config::AppConfig;
 use crate::domain::{PageSummary, SearchPerformanceBreakdown, TopPagesReport};
 use crate::errors::Result;
+use crate::google::{SC_MAX_ROWS};
 use crate::google::api::GoogleApi;
 use crate::google::analytics_data::{DateRange, ReportRequest};
 use crate::google::search_console::SearchAnalyticsRequest;
@@ -135,7 +136,7 @@ pub async fn build(
             end_date: helpers::yesterday(),
             dimensions: vec!["page".into()],
             page_filter: None,
-            row_limit: Some(1000),
+            row_limit: Some(SC_MAX_ROWS),
         };
 
         let sc_query_req = SearchAnalyticsRequest {
@@ -144,7 +145,7 @@ pub async fn build(
             end_date: sc_req.end_date.clone(),
             dimensions: vec!["page".into(), "query".into()],
             page_filter: None,
-            row_limit: Some(2500),
+            row_limit: Some(SC_MAX_ROWS),
         };
 
         let (sc_resp, sc_query_resp) = tokio::join!(

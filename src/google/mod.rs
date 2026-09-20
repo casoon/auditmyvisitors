@@ -8,6 +8,20 @@ use std::time::Duration;
 use crate::errors::{AppError, Result};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The most rows Search Console returns for one query.
+///
+/// Documented as a valid range of 1–25,000. Requests that feed a join — a page
+/// matched across two periods, a query matched to its best page — ask for this
+/// rather than a guess, because a slice of one side silently drops rows from
+/// the result. Requests that only want a ranked top N do not need it.
+pub const SC_MAX_ROWS: i32 = 25_000;
+
+/// A working ceiling for GA4 requests that feed a join.
+///
+/// The Data API caps a response at 250,000 rows; this is far below that and
+/// well above any page count the reports have to reconcile.
+pub const GA4_JOIN_ROWS: i64 = 10_000;
 const MAX_RETRIES: u32 = 3;
 
 /// Build a shared HTTP client with sensible timeout.
