@@ -317,3 +317,141 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
     Ok(report)
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::google::api::FixtureGoogleApi;
+
+    fn config() -> AppConfig {
+        let mut c = AppConfig::default();
+        c.set_ga4_property("properties/1".into(), "example.com".into());
+        c.set_search_console_url("https://example.com/".into());
+        c
+    }
+
+    /// A request with two date ranges comes back as one row set with a
+    /// `date_range_N` tag appended to the dimensions. Counting the previous
+    /// period into the current one would roughly double every figure and make
+    /// the trend read as flat.
+    #[tokio::test]
+    async fn the_previous_period_stays_out_of_the_current_totals() {
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["sessionDefaultChannelGroup"],
+                vec![
+                    (vec!["Organic Search", "date_range_0"], vec!["600", "0.5"]),
+                    (vec!["Direct", "date_range_0"], vec!["400", "0.5"]),
+                    (vec!["Organic Search", "date_range_1"], vec!["500", "0.5"]),
+                    (vec!["Direct", "date_range_1"], vec!["300", "0.5"]),
+                ],
+            )
+            .with_report(&["sessionSource"], vec![])
+            .with_report(&["pagePath"], vec![])
+            .with_search(&["date"], vec![])
+            .with_search(&["query"], vec![]);
+
+        let report = build(&config(), &api, 28).await.unwrap();
+
+        assert_eq!(report.traffic.total_sessions, 1000, "current period only");
+        assert_eq!(report.traffic.organic_sessions, 600);
+        // 1000 against 800 in the previous period
+        let trend = report.trend.expect("a previous period was returned");
+        assert!((trend.sessions_pct - 25.0).abs() < 1e-9, "{}", trend.sessions_pct);
+    }
+
+    /// The engagement rate is weighted by sessions, and the previous period
+    /// must not pull on that weight either.
+    #[tokio::test]
+    async fn engagement_is_session_weighted_over_the_current_period() {
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["sessionDefaultChannelGroup"],
+                vec![
+                    (vec!["Organic Search", "date_range_0"], vec!["100", "0.9"]),
+                    (vec!["Direct", "date_range_0"], vec!["900", "0.1"]),
+                    (vec!["Direct", "date_range_1"], vec!["900", "1.0"]),
+                ],
+            )
+            .with_report(&["sessionSource"], vec![])
+            .with_report(&["pagePath"], vec![])
+            .with_search(&["date"], vec![])
+            .with_search(&["query"], vec![]);
+
+        let report = build(&config(), &api, 28).await.unwrap();
+
+        // (0.9 * 100 + 0.1 * 900) / 1000
+        assert!((report.engagement_rate - 0.18).abs() < 1e-9, "{}", report.engagement_rate);
+    }
+
+    /// Direct traffic is already its own line in the channel table, so it is
+    /// filtered out of the source list — while AI referrers are picked out of
+    /// the same list by domain.
+    #[tokio::test]
+    async fn sources_drop_direct_and_pick_out_ai_referrers() {
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["sessionDefaultChannelGroup"],
+                vec![(vec!["Direct", "date_range_0"], vec!["10", "0.5"])],
+            )
+            .with_report(
+                &["sessionSource"],
+                vec![
+                    (vec!["google"], vec!["500"]),
+                    (vec!["(direct)"], vec!["400"]),
+                    (vec!["chatgpt.com"], vec!["120"]),
+                    (vec!["(not set)"], vec!["50"]),
+                    (vec!["perplexity.ai"], vec!["30"]),
+                    (vec!["ghost-referrer"], vec!["0"]),
+                ],
+            )
+            .with_report(&["pagePath"], vec![])
+            .with_search(&["date"], vec![])
+            .with_search(&["query"], vec![]);
+
+        let report = build(&config(), &api, 28).await.unwrap();
+
+        let names: Vec<&str> = report.top_sources.iter().map(|s| s.source.as_str()).collect();
+        assert_eq!(names, vec!["google", "chatgpt.com", "perplexity.ai"]);
+        assert!(!names.contains(&"ghost-referrer"), "zero-session rows are dropped");
+
+        let ai: Vec<&str> = report.ai_sources.iter().map(|s| s.source.as_str()).collect();
+        assert_eq!(ai, vec!["chatgpt.com", "perplexity.ai"]);
+    }
+
+    /// Search Console returns both periods in one response, split by date. The
+    /// average position is weighted by impressions, so a single low-traffic day
+    /// at position 40 must not drag the average with the same force as a day
+    /// carrying most of the impressions.
+    #[tokio::test]
+    async fn search_totals_split_on_the_date_cutoff() {
+        let inside = helpers::days_ago(28);
+        let outside = helpers::days_ago(40);
+
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["sessionDefaultChannelGroup"],
+                vec![(vec!["Direct", "date_range_0"], vec!["10", "0.5"])],
+            )
+            .with_report(&["sessionSource"], vec![])
+            .with_report(&["pagePath"], vec![])
+            .with_search(
+                &["date"],
+                vec![
+                    (vec![inside.as_str()], 90.0, 900.0, 0.1, 3.0),
+                    (vec![outside.as_str()], 40.0, 400.0, 0.1, 9.0),
+                ],
+            )
+            .with_search(&["query"], vec![]);
+
+        let report = build(&config(), &api, 28).await.unwrap();
+
+        assert_eq!(report.search.clicks, 90.0, "the older day belongs to the previous period");
+        assert_eq!(report.search.impressions, 900.0);
+        assert!((report.search.average_position - 3.0).abs() < 1e-9);
+
+        let trend = report.trend.expect("previous clicks were returned");
+        // 90 against 40
+        assert!((trend.clicks_pct - 125.0).abs() < 1e-9, "{}", trend.clicks_pct);
+    }
+}

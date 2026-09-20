@@ -344,3 +344,124 @@ fn build_recommendations(
     recs
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::google::api::FixtureGoogleApi;
+
+    fn config() -> AppConfig {
+        let mut c = AppConfig::default();
+        c.set_ga4_property("properties/1".into(), "example.com".into());
+        c.set_search_console_url("https://example.com/".into());
+        c
+    }
+
+    /// GA4 returns a rate per channel, and the page-level rate is the average
+    /// weighted by sessions — not the mean of the rates. With a small engaged
+    /// channel beside a large unengaged one the two answers are far apart, and
+    /// the unweighted one would flatter the page.
+    #[tokio::test]
+    async fn channel_rates_are_averaged_by_session_weight() {
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["sessionDefaultChannelGroup"],
+                vec![
+                    (vec!["Organic Search"], vec!["100", "0.8", "120.0", "0.2", "60", "5"]),
+                    (vec!["Direct"], vec!["900", "0.4", "20.0", "0.6", "300", "1"]),
+                ],
+            )
+            .with_search(&["query"], vec![])
+            .with_search(&["page"], vec![]);
+
+        let report = build(&config(), &api, "https://example.com/pricing", 28)
+            .await
+            .unwrap();
+
+        // (0.8 * 100 + 0.4 * 900) / 1000, not (0.8 + 0.4) / 2
+        assert!((report.engagement_rate - 0.44).abs() < 1e-9, "{}", report.engagement_rate);
+        assert!((report.bounce_rate - 0.56).abs() < 1e-9, "{}", report.bounce_rate);
+        assert!((report.avg_session_duration_secs - 30.0).abs() < 1e-9);
+        assert!((report.new_user_share - 0.36).abs() < 1e-9);
+        assert_eq!(report.key_events, 6);
+    }
+
+    /// Only three channel names are recognised by name; everything else has to
+    /// land in `other` rather than being dropped from the totals.
+    #[tokio::test]
+    async fn unknown_channels_still_count_towards_the_total() {
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["sessionDefaultChannelGroup"],
+                vec![
+                    (vec!["Organic Search"], vec!["10", "0.5", "1.0", "0.5", "0", "0"]),
+                    (vec!["Direct"], vec!["20", "0.5", "1.0", "0.5", "0", "0"]),
+                    (vec!["Referral"], vec!["30", "0.5", "1.0", "0.5", "0", "0"]),
+                    (vec!["Organic Social"], vec!["40", "0.5", "1.0", "0.5", "0", "0"]),
+                    (vec!["Paid Search"], vec!["5", "0.5", "1.0", "0.5", "0", "0"]),
+                ],
+            )
+            .with_search(&["query"], vec![])
+            .with_search(&["page"], vec![]);
+
+        let t = build(&config(), &api, "https://example.com/x", 28)
+            .await
+            .unwrap()
+            .traffic;
+
+        assert_eq!(t.organic_sessions, 10);
+        assert_eq!(t.direct_sessions, 20);
+        assert_eq!(t.referral_sessions, 30);
+        assert_eq!(t.other_sessions, 45, "Organic Social + Paid Search");
+        assert_eq!(t.total_sessions, 105);
+    }
+
+    /// The page totals come from the `page`-dimension response, the query list
+    /// from the `query` one. Mixing the two up would report a single query's
+    /// clicks as the whole page's.
+    #[tokio::test]
+    async fn page_totals_and_queries_come_from_their_own_responses() {
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["sessionDefaultChannelGroup"],
+                vec![(vec!["Organic Search"], vec!["50", "0.6", "40.0", "0.4", "25", "2"])],
+            )
+            .with_search(
+                &["query"],
+                vec![
+                    (vec!["pricing"], 20.0, 400.0, 0.05, 4.0),
+                    (vec!["cost"], 13.0, 300.0, 0.043, 6.0),
+                ],
+            )
+            .with_search(&["page"], vec![(vec!["https://example.com/pricing"], 33.0, 700.0, 0.047, 5.0)])
+            ;
+
+        let report = build(&config(), &api, "https://example.com/pricing", 28)
+            .await
+            .unwrap();
+
+        assert_eq!(report.search.clicks, 33.0, "page total, not the top query");
+        assert_eq!(report.search.impressions, 700.0);
+        assert_eq!(report.search.top_queries.len(), 2);
+        assert_eq!(report.search.top_queries[0].query, "pricing");
+    }
+
+    /// Without a Search Console property the report still builds, with an empty
+    /// search section rather than an error.
+    #[tokio::test]
+    async fn works_without_a_search_console_property() {
+        let mut c = AppConfig::default();
+        c.set_ga4_property("properties/1".into(), "example.com".into());
+
+        let api = FixtureGoogleApi::new().with_report(
+            &["sessionDefaultChannelGroup"],
+            vec![(vec!["Direct"], vec!["7", "0.5", "10.0", "0.5", "3", "0"])],
+        );
+
+        let report = build(&c, &api, "https://example.com/x", 28).await.unwrap();
+
+        assert_eq!(report.traffic.total_sessions, 7);
+        assert_eq!(report.search.clicks, 0.0);
+        assert!(report.search.top_queries.is_empty());
+    }
+}
