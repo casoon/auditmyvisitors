@@ -3,15 +3,16 @@ use crate::domain::{
     PageDetailReport, QueryRow, Recommendation, SearchPerformanceBreakdown, TrafficSourceBreakdown,
 };
 use crate::errors::Result;
-use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
-use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::google::api::GoogleApi;
+use crate::google::analytics_data::{DateRange, ReportRequest};
+use crate::google::search_console::SearchAnalyticsRequest;
 use crate::helpers;
 use crate::insights::insights_for_page;
 use serde_json::json;
 
 pub async fn build(
     config: &AppConfig,
-    access_token: &str,
+    api: &impl GoogleApi,
     url: &str,
     days: u32,
 ) -> Result<PageDetailReport> {
@@ -51,7 +52,7 @@ pub async fn build(
         order_by: None,
     };
 
-    let ga_report = run_report(access_token, req).await?;
+    let ga_report = api.run_report(req).await?;
 
     let mut traffic = TrafficSourceBreakdown::default();
     let mut eng_sum = 0.0f64;
@@ -113,8 +114,8 @@ pub async fn build(
         };
 
         let (query_resp, page_resp) = tokio::join!(
-            query(access_token, query_req),
-            query(access_token, page_req),
+            api.search_analytics(query_req),
+            api.search_analytics(page_req),
         );
 
         let top_queries: Vec<QueryRow> = query_resp

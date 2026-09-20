@@ -25,6 +25,7 @@ use crate::ui::style::Paint;
 
 use cli::{AuthAction, Cli, Command, ExportAction, PropertiesAction, ReportAction, SnapshotAction};
 use config::AppConfig;
+use google::api::GoogleApi;
 
 #[tokio::main]
 async fn main() {
@@ -81,13 +82,15 @@ async fn handle_auth(action: AuthAction, _config: &AppConfig) -> anyhow::Result<
 // ─── Properties ───────────────────────────────────────────────────────────────
 
 async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> anyhow::Result<()> {
-    let token = auth::ensure_valid_token().await
-        .context("Please log in first: auditmyvisitors auth login")?;
+    let api = google::api::HttpGoogleApi::new(
+        auth::ensure_valid_token().await
+            .context("Please log in first: auditmyvisitors auth login")?,
+    );
 
     match action {
         PropertiesAction::List => {
             let pb = spinner("Loading Google Analytics properties…");
-            let properties = google::analytics_admin::list_properties(&token).await?;
+            let properties = api.list_properties().await?;
             pb.finish_and_clear();
 
             if properties.is_empty() {
@@ -101,7 +104,7 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
             }
 
             let pb2 = spinner("Loading Search Console properties…");
-            let sites = google::search_console::list_sites(&token).await?;
+            let sites = api.list_sites().await?;
             pb2.finish_and_clear();
 
             if !sites.is_empty() {
@@ -115,8 +118,8 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
         PropertiesAction::Select => {
             let pb = spinner("Loading available properties…");
             let (ga4_props, sc_sites) = tokio::join!(
-                google::analytics_admin::list_properties(&token),
-                google::search_console::list_sites(&token),
+                api.list_properties(),
+                api.list_sites(),
             );
             pb.finish_and_clear();
 
@@ -173,20 +176,22 @@ async fn handle_properties(action: PropertiesAction, config: &mut AppConfig) -> 
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
 async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Result<()> {
-    let token = auth::ensure_valid_token().await
-        .context("Please log in first: auditmyvisitors auth login")?;
+    let api = google::api::HttpGoogleApi::new(
+        auth::ensure_valid_token().await
+            .context("Please log in first: auditmyvisitors auth login")?,
+    );
 
     match action {
         ReportAction::Overview { days } => {
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Loading overview for last {} days…", days));
             let (report, top_pages, opportunities, growth, trends, clusters) = tokio::join!(
-                reports::overview::build(config, &token, days),
-                reports::top_pages::build(config, &token, days, 10, "sessions"),
-                reports::opportunities::build(config, &token, days),
-                reports::growth::build(config, &token, days),
-                reports::trends::build(config, &token, days),
-                reports::clusters::build(config, &token, days),
+                reports::overview::build(config, &api, days),
+                reports::top_pages::build(config, &api, days, 10, "sessions"),
+                reports::opportunities::build(config, &api, days),
+                reports::growth::build(config, &api, days),
+                reports::trends::build(config, &api, days),
+                reports::clusters::build(config, &api, days),
             );
             let report = report?;
             let top_pages = top_pages?;
@@ -238,7 +243,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
             let days = days.unwrap_or(config.report.default_days);
             let limit = limit.unwrap_or(config.report.top_pages_limit);
             let pb = spinner(&format!("Loading top {} pages for last {} days…", limit, days));
-            let report = reports::top_pages::build(config, &token, days, limit, &sort_by).await?;
+            let report = reports::top_pages::build(config, &api, days, limit, &sort_by).await?;
             pb.finish_and_clear();
             ui::print_top_pages(&report);
         }
@@ -246,7 +251,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::Page { url, days } => {
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Loading page detail for {}…", url));
-            let report = reports::page_detail::build(config, &token, &url, days).await?;
+            let report = reports::page_detail::build(config, &api, &url, days).await?;
             pb.finish_and_clear();
             ui::print_page_detail(&report);
         }
@@ -254,7 +259,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::Compare { url, before, after, since } => {
             let pb = spinner("Loading comparison data…");
             let report = reports::compare::build(
-                config, &token, url.as_deref(), before, after, &since,
+                config, &api, url.as_deref(), before, after, &since,
             ).await?;
             pb.finish_and_clear();
             ui::print_comparison(&report);
@@ -263,7 +268,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::Opportunities { days } => {
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Analyzing opportunities for last {} days…", days));
-            let report = reports::opportunities::build(config, &token, days).await?;
+            let report = reports::opportunities::build(config, &api, days).await?;
             pb.finish_and_clear();
             ui::print_opportunities(&report);
         }
@@ -272,7 +277,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
             let days = days.unwrap_or(config.report.default_days);
             let limit = limit.unwrap_or(30);
             let pb = spinner(&format!("Loading query analysis for last {} days…", days));
-            let report = reports::queries::build(config, &token, days, limit, &sort_by).await?;
+            let report = reports::queries::build(config, &api, days, limit, &sort_by).await?;
             pb.finish_and_clear();
             ui::print_queries(&report);
         }
@@ -280,7 +285,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::AiTraffic { days } => {
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Analyzing AI traffic for last {} days…", days));
-            let report = reports::ai_traffic::build(config, &token, days).await?;
+            let report = reports::ai_traffic::build(config, &api, days).await?;
             pb.finish_and_clear();
             ui::print_ai_traffic(&report);
         }
@@ -288,7 +293,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::Channels { days } => {
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Loading channel analysis for last {} days…", days));
-            let report = reports::channels::build(config, &token, days).await?;
+            let report = reports::channels::build(config, &api, days).await?;
             pb.finish_and_clear();
             ui::print_channels(&report);
         }
@@ -296,7 +301,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::Clusters { days } => {
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Analyzing topic clusters for last {} days…", days));
-            let report = reports::clusters::build(config, &token, days).await?;
+            let report = reports::clusters::build(config, &api, days).await?;
             pb.finish_and_clear();
             ui::print_clusters(&report);
         }
@@ -304,7 +309,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::Decay { days } => {
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Analyzing content decay for last {} days…", days));
-            let report = reports::decay::build(config, &token, days).await?;
+            let report = reports::decay::build(config, &api, days).await?;
             pb.finish_and_clear();
             ui::print_decay(&report);
         }
@@ -312,7 +317,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
         ReportAction::Devices { days } => {
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Loading device analysis for last {} days…", days));
-            let report = reports::devices::build(config, &token, days).await?;
+            let report = reports::devices::build(config, &api, days).await?;
             pb.finish_and_clear();
             ui::print_devices(&report);
         }
@@ -321,7 +326,7 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
             let days = days.unwrap_or(config.report.default_days);
             let limit = limit.unwrap_or(20);
             let pb = spinner(&format!("Loading country analysis for last {} days…", days));
-            let report = reports::countries::build(config, &token, days, limit).await?;
+            let report = reports::countries::build(config, &api, days, limit).await?;
             pb.finish_and_clear();
             ui::print_countries(&report);
         }
@@ -340,15 +345,17 @@ struct JsonExport {
 async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Result<()> {
     match action {
         ExportAction::Json { days, output } => {
-            let token = auth::ensure_valid_token().await
-                .context("Please log in first: auditmyvisitors auth login")?;
+            let api = google::api::HttpGoogleApi::new(
+                auth::ensure_valid_token().await
+                    .context("Please log in first: auditmyvisitors auth login")?,
+            );
 
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Loading data for last {} days…", days));
 
             let (overview, top_pages) = tokio::join!(
-                reports::overview::build(config, &token, days),
-                reports::top_pages::build(config, &token, days, 50, "sessions"),
+                reports::overview::build(config, &api, days),
+                reports::top_pages::build(config, &api, days, 50, "sessions"),
             );
             let overview = overview?;
             let top_pages = top_pages?;
@@ -369,8 +376,10 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
         }
 
         ExportAction::Csv { report: report_type, days, limit, output } => {
-            let token = auth::ensure_valid_token().await
-                .context("Please log in first: auditmyvisitors auth login")?;
+            let api = google::api::HttpGoogleApi::new(
+                auth::ensure_valid_token().await
+                    .context("Please log in first: auditmyvisitors auth login")?,
+            );
 
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Loading data for last {} days…", days));
@@ -378,7 +387,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
             let csv_bytes: Vec<u8> = match report_type.as_str() {
                 "top-pages" => {
                     let limit = limit.unwrap_or(config.report.top_pages_limit);
-                    let report = reports::top_pages::build(config, &token, days, limit, "sessions").await?;
+                    let report = reports::top_pages::build(config, &api, days, limit, "sessions").await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_top_pages(&report, &mut buf)?;
@@ -386,35 +395,35 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                 }
                 "queries" => {
                     let limit = limit.unwrap_or(30);
-                    let report = reports::queries::build(config, &token, days, limit, "clicks").await?;
+                    let report = reports::queries::build(config, &api, days, limit, "clicks").await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_queries(&report, &mut buf)?;
                     buf
                 }
                 "opportunities" => {
-                    let report = reports::opportunities::build(config, &token, days).await?;
+                    let report = reports::opportunities::build(config, &api, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_opportunities(&report, &mut buf)?;
                     buf
                 }
                 "channels" => {
-                    let report = reports::channels::build(config, &token, days).await?;
+                    let report = reports::channels::build(config, &api, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_channels(&report, &mut buf)?;
                     buf
                 }
                 "clusters" => {
-                    let report = reports::clusters::build(config, &token, days).await?;
+                    let report = reports::clusters::build(config, &api, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_clusters(&report, &mut buf)?;
                     buf
                 }
                 "devices" => {
-                    let report = reports::devices::build(config, &token, days).await?;
+                    let report = reports::devices::build(config, &api, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_devices(&report, &mut buf)?;
@@ -422,14 +431,14 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                 }
                 "countries" => {
                     let limit = limit.unwrap_or(20);
-                    let report = reports::countries::build(config, &token, days, limit).await?;
+                    let report = reports::countries::build(config, &api, days, limit).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_countries(&report, &mut buf)?;
                     buf
                 }
                 "decay" => {
-                    let report = reports::decay::build(config, &token, days).await?;
+                    let report = reports::decay::build(config, &api, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_decay(&report, &mut buf)?;
@@ -457,17 +466,19 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
         }
 
         ExportAction::Pdf { days, limit, output } => {
-            let token = auth::ensure_valid_token().await
-                .context("Please log in first: auditmyvisitors auth login")?;
+            let api = google::api::HttpGoogleApi::new(
+                auth::ensure_valid_token().await
+                    .context("Please log in first: auditmyvisitors auth login")?,
+            );
 
             let days = days.unwrap_or(config.report.default_days);
 
             let pb = spinner(&format!("Loading data for last {} days…", days));
 
             let (overview, top_pages, queries) = tokio::join!(
-                reports::overview::build(config, &token, days),
-                reports::top_pages::build(config, &token, days, 500, "sessions"),
-                reports::queries::build(config, &token, days, 500, "clicks"),
+                reports::overview::build(config, &api, days),
+                reports::top_pages::build(config, &api, days, 500, "sessions"),
+                reports::queries::build(config, &api, days, 500, "clicks"),
             );
             let overview = overview?;
             let top_pages = top_pages?;
@@ -478,7 +489,7 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
                 .filter(|p| p.search.impressions == 0.0 && p.sessions > 10)
                 .cloned()
                 .collect();
-            let site_health = reports::site_health::build(config, &token, &invisible).await.ok();
+            let site_health = reports::site_health::build(config, &api, &invisible).await.ok();
 
             pb.set_message("Creating PDF…");
 

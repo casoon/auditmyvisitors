@@ -8,12 +8,13 @@ use crate::clusters;
 use crate::config::AppConfig;
 use crate::domain::{ClustersReport, Insight, InsightCategory, InsightSeverity, TopicCluster};
 use crate::errors::Result;
-use crate::google::analytics_data::{run_report, DateRange, ReportRequest};
-use crate::google::search_console::{query as sc_query, SearchAnalyticsRequest};
+use crate::google::api::GoogleApi;
+use crate::google::analytics_data::{DateRange, ReportRequest};
+use crate::google::search_console::SearchAnalyticsRequest;
 use crate::helpers;
 use crate::opportunities::expected_ctr;
 
-pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<ClustersReport> {
+pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Result<ClustersReport> {
     let property_id = config.require_ga4_property()?.to_string();
     let sc_url = config.require_search_console_url()?;
     let property_name = config
@@ -25,8 +26,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
 
     // ── Parallel: GA4 sessions per page + SC queries + SC pages ────────────
     let (ga_pages, sc_queries, sc_pages) = tokio::join!(
-        run_report(
-            access_token,
+        api.run_report(
             ReportRequest {
                 property_id,
                 date_ranges: vec![DateRange::last_n_days(days)],
@@ -37,8 +37,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
                 order_by: None,
             },
         ),
-        sc_query(
-            access_token,
+        api.search_analytics(
             SearchAnalyticsRequest {
                 site_url: sc_url.to_string(),
                 start_date: helpers::days_ago(days),
@@ -48,8 +47,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
                 row_limit: Some(500),
             },
         ),
-        sc_query(
-            access_token,
+        api.search_analytics(
             SearchAnalyticsRequest {
                 site_url: sc_url.to_string(),
                 start_date: helpers::days_ago(days),

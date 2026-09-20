@@ -20,6 +20,9 @@ Dokumentiert sind nur Regeln, die im Repo erkennbar durchgehalten werden.
   `ReportViewModel`-Felder sind bereits Strings.
 - Alle HTTP-Aufrufe gegen Google laufen über `google::send_with_retry()`, nicht über
   einen eigenen Client.
+- Reports rufen die Clients nicht direkt auf, sondern nehmen `&impl GoogleApi`. Eine
+  neue Google-Operation kommt als Trait-Methode dazu, nicht als freier Aufruf —
+  sonst ist der betroffene Report wieder nur mit echtem Login ausführbar.
 
 ## Fehlerbehandlung
 
@@ -59,8 +62,10 @@ die Hälfte der Nutzer unsichtbar.
 - Getestet werden vor allem reine Funktionen: Scores, Klassifikation, Clustering,
   Schwellwertlogik, Formatierung. Für API-Clients gibt es keine Tests.
 - Domain-Structs sind öffentlich und ohne Konstruktor — wird ein Feld ergänzt,
-  müssen alle Testfixtures mitgezogen werden (genau das ist in
-  `src/opportunities/mod.rs` derzeit offen).
+  müssen alle Testfixtures mitgezogen werden.
+- Report-Module werden über `FixtureGoogleApi` getestet, das Requests an ihren
+  Dimensionen erkennt. Ein nicht hinterlegter Request paniert absichtlich: ein Test,
+  der stillschweigend über leere Daten assertet, beweist nichts.
 
 ## Commits und Versionierung
 

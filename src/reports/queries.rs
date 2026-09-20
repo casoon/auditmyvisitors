@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use crate::config::AppConfig;
 use crate::domain::{Insight, InsightCategory, InsightSeverity, QueriesReport, QueryRow};
 use crate::errors::Result;
-use crate::google::search_console::{query, SearchAnalyticsRequest, SearchAnalyticsRow};
+use crate::google::api::GoogleApi;
+use crate::google::search_console::{SearchAnalyticsRequest, SearchAnalyticsRow};
 use crate::helpers;
 use crate::intent;
 use crate::opportunities::expected_ctr;
@@ -24,7 +25,7 @@ fn best_page_per_query(rows: &[SearchAnalyticsRow]) -> HashMap<String, String> {
 
 pub async fn build(
     config: &AppConfig,
-    access_token: &str,
+    api: &impl GoogleApi,
     days: u32,
     limit: usize,
     sort_by: &str,
@@ -57,8 +58,8 @@ pub async fn build(
     };
 
     let (resp, resp_pages) = tokio::join!(
-        query(access_token, req),
-        query(access_token, req_pages),
+        api.search_analytics(req),
+        api.search_analytics(req_pages),
     );
     let resp = resp?;
     let resp_pages = resp_pages?;

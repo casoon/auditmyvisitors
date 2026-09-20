@@ -3,6 +3,7 @@ use crate::ui::spinner;
 use crate::ui::style::Paint;
 
 use crate::config::AppConfig;
+use crate::google::{self, api::GoogleApi};
 use crate::{auth, export, narrative, reports, snapshots, ui};
 
 // ─── Time range ─────────────────────────────────────────────────────────────
@@ -44,10 +45,12 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
     println!();
 
     // Run the full report immediately on first entry
-    let mut token = auth::ensure_valid_token()
-        .await
-        .context("Failed to refresh token")?;
-    run_full_report(config, &token, days).await.unwrap_or_else(|e| {
+    let mut api = google::api::HttpGoogleApi::new(
+        auth::ensure_valid_token()
+            .await
+            .context("Failed to refresh token")?,
+    );
+    run_full_report(config, &api, days).await.unwrap_or_else(|e| {
         eprintln!("\n{} {}\n", "Error:".err(), e);
     });
 
@@ -63,17 +66,19 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
 
         // Refresh token before each action
         if choice != MENU_EXIT {
-            token = auth::ensure_valid_token()
-                .await
-                .context("Failed to refresh token")?;
+            api = google::api::HttpGoogleApi::new(
+                auth::ensure_valid_token()
+                    .await
+                    .context("Failed to refresh token")?,
+            );
         }
 
         match choice {
-            MENU_PAGE_DETAIL => run_page_detail(config, &token, days).await,
-            MENU_EXPORT => run_export(config, &token, days).await,
+            MENU_PAGE_DETAIL => run_page_detail(config, &api, days).await,
+            MENU_EXPORT => run_export(config, &api, days).await,
             MENU_PROPERTY => {
                 super::setup::ensure_ready(config).await?;
-                token = auth::ensure_valid_token().await?;
+                api = google::api::HttpGoogleApi::new(auth::ensure_valid_token().await?);
                 Ok(())
             }
             MENU_EXIT => {
@@ -92,10 +97,10 @@ pub async fn report_loop(config: &mut AppConfig) -> anyhow::Result<()> {
 
 // ─── Full Report ────────────────────────────────────────────────────────────
 
-async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
+async fn run_full_report(config: &AppConfig, api: &impl GoogleApi, days: u32) -> anyhow::Result<()> {
     // 1. Overview
     let pb = spinner("Loading overview…");
-    let overview = reports::overview::build(config, token, days).await?;
+    let overview = reports::overview::build(config, api, days).await?;
     pb.finish_and_clear();
     ui::print_overview(&overview);
 
@@ -121,67 +126,67 @@ async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::
 
     // 2. Growth Drivers
     let pb = spinner("Analyzing growth drivers…");
-    let growth = reports::growth::build(config, token, days).await?;
+    let growth = reports::growth::build(config, api, days).await?;
     pb.finish_and_clear();
     ui::print_growth(&growth);
 
     // 3. Weekly Trends
     let pb = spinner("Loading weekly trends…");
-    let trends = reports::trends::build(config, token, days).await?;
+    let trends = reports::trends::build(config, api, days).await?;
     pb.finish_and_clear();
     ui::print_trends(&trends);
 
     // 4. Top Pages
     let pb = spinner("Loading top pages…");
-    let top_pages = reports::top_pages::build(config, token, days, 500, "sessions").await?;
+    let top_pages = reports::top_pages::build(config, api, days, 500, "sessions").await?;
     pb.finish_and_clear();
     ui::print_top_pages(&top_pages);
 
     // 5. Channels
     let pb = spinner("Loading channel analysis…");
-    let channels = reports::channels::build(config, token, days).await?;
+    let channels = reports::channels::build(config, api, days).await?;
     pb.finish_and_clear();
     ui::print_channels(&channels);
 
     // 6. Queries
     let pb = spinner("Analyzing search queries…");
-    let queries = reports::queries::build(config, token, days, 30, "clicks").await?;
+    let queries = reports::queries::build(config, api, days, 30, "clicks").await?;
     pb.finish_and_clear();
     ui::print_queries(&queries);
 
     // 7. Opportunities
     let pb = spinner("Analyzing opportunities…");
-    let opportunities = reports::opportunities::build(config, token, days).await?;
+    let opportunities = reports::opportunities::build(config, api, days).await?;
     pb.finish_and_clear();
     ui::print_opportunities(&opportunities);
 
     // 8. Topic Clusters
     let pb = spinner("Analyzing topic clusters…");
-    let clusters = reports::clusters::build(config, token, days).await?;
+    let clusters = reports::clusters::build(config, api, days).await?;
     pb.finish_and_clear();
     ui::print_clusters(&clusters);
 
     // 9. AI Traffic
     let pb = spinner("Analyzing AI traffic…");
-    let ai = reports::ai_traffic::build(config, token, days).await?;
+    let ai = reports::ai_traffic::build(config, api, days).await?;
     pb.finish_and_clear();
     ui::print_ai_traffic(&ai);
 
     // 10. Devices
     let pb = spinner("Loading device analysis…");
-    let devices = reports::devices::build(config, token, days).await?;
+    let devices = reports::devices::build(config, api, days).await?;
     pb.finish_and_clear();
     ui::print_devices(&devices);
 
     // 11. Countries
     let pb = spinner("Loading country analysis…");
-    let countries = reports::countries::build(config, token, days, 20).await?;
+    let countries = reports::countries::build(config, api, days, 20).await?;
     pb.finish_and_clear();
     ui::print_countries(&countries);
 
     // 12. Content Decay
     let pb = spinner("Analyzing content decay…");
-    let decay = reports::decay::build(config, token, days).await?;
+    let decay = reports::decay::build(config, api, days).await?;
     pb.finish_and_clear();
     ui::print_decay(&decay);
 
@@ -225,13 +230,13 @@ async fn run_full_report(config: &AppConfig, token: &str, days: u32) -> anyhow::
     Ok(())
 }
 
-async fn run_page_detail(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
+async fn run_page_detail(config: &AppConfig, api: &impl GoogleApi, days: u32) -> anyhow::Result<()> {
     let url: String = inquire::Text::new("Which page should be analyzed?")
         .with_placeholder("/blog/my-article")
         .prompt()?;
 
     let pb = spinner(&format!("Loading details for {}…", url));
-    let report = reports::page_detail::build(config, token, &url, days).await?;
+    let report = reports::page_detail::build(config, api, &url, days).await?;
     pb.finish_and_clear();
     ui::print_page_detail(&report);
 
@@ -245,7 +250,7 @@ const EXP_JSON: &str = "JSON (overview + top pages)";
 const EXP_CSV: &str = "CSV (choose report)";
 const EXP_BACK: &str = "<- Back";
 
-async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Result<()> {
+async fn run_export(config: &AppConfig, api: &impl GoogleApi, days: u32) -> anyhow::Result<()> {
     let options = vec![EXP_PDF, EXP_JSON, EXP_CSV, EXP_BACK];
     let choice = inquire::Select::new("Export format:", options).prompt()?;
 
@@ -253,8 +258,8 @@ async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Resul
         EXP_PDF => {
             let pb = spinner("Loading data…");
             let (overview, top_pages) = tokio::join!(
-                reports::overview::build(config, token, days),
-                reports::top_pages::build(config, token, days, 500, "sessions"),
+                reports::overview::build(config, api, days),
+                reports::top_pages::build(config, api, days, 500, "sessions"),
             );
             let overview = overview?;
             let top_pages = top_pages?;
@@ -265,8 +270,8 @@ async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Resul
         EXP_JSON => {
             let pb = spinner("Loading data…");
             let (overview, top_pages) = tokio::join!(
-                reports::overview::build(config, token, days),
-                reports::top_pages::build(config, token, days, 50, "sessions"),
+                reports::overview::build(config, api, days),
+                reports::top_pages::build(config, api, days, 50, "sessions"),
             );
             let overview = overview?;
             let top_pages = top_pages?;
@@ -300,56 +305,56 @@ async fn run_export(config: &AppConfig, token: &str, days: u32) -> anyhow::Resul
 
             let csv_bytes: Vec<u8> = match csv_choice {
                 "Top Pages" => {
-                    let r = reports::top_pages::build(config, token, days, 50, "sessions").await?;
+                    let r = reports::top_pages::build(config, api, days, 50, "sessions").await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_top_pages(&r, &mut buf)?;
                     buf
                 }
                 "Search Queries" => {
-                    let r = reports::queries::build(config, token, days, 100, "clicks").await?;
+                    let r = reports::queries::build(config, api, days, 100, "clicks").await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_queries(&r, &mut buf)?;
                     buf
                 }
                 "Opportunities" => {
-                    let r = reports::opportunities::build(config, token, days).await?;
+                    let r = reports::opportunities::build(config, api, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_opportunities(&r, &mut buf)?;
                     buf
                 }
                 "Topic Clusters" => {
-                    let r = reports::clusters::build(config, token, days).await?;
+                    let r = reports::clusters::build(config, api, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_clusters(&r, &mut buf)?;
                     buf
                 }
                 "Channels" => {
-                    let r = reports::channels::build(config, token, days).await?;
+                    let r = reports::channels::build(config, api, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_channels(&r, &mut buf)?;
                     buf
                 }
                 "Devices" => {
-                    let r = reports::devices::build(config, token, days).await?;
+                    let r = reports::devices::build(config, api, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_devices(&r, &mut buf)?;
                     buf
                 }
                 "Countries" => {
-                    let r = reports::countries::build(config, token, days, 50).await?;
+                    let r = reports::countries::build(config, api, days, 50).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_countries(&r, &mut buf)?;
                     buf
                 }
                 "Content Decay" => {
-                    let r = reports::decay::build(config, token, days).await?;
+                    let r = reports::decay::build(config, api, days).await?;
                     pb.finish_and_clear();
                     let mut buf = Vec::new();
                     export::csv::write_decay(&r, &mut buf)?;

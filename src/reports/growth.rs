@@ -10,11 +10,12 @@ use crate::domain::{
     ChannelGrowthRow, GrowthReport, GrowthRow, Insight, InsightCategory, InsightSeverity, QueryRow,
 };
 use crate::errors::Result;
-use crate::google::analytics_data::{run_report, DateRange, ReportRequest};
-use crate::google::search_console::{query as sc_query, SearchAnalyticsRequest};
+use crate::google::api::GoogleApi;
+use crate::google::analytics_data::{DateRange, ReportRequest};
+use crate::google::search_console::SearchAnalyticsRequest;
 use crate::helpers;
 
-pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<GrowthReport> {
+pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Result<GrowthReport> {
     let property_id = config.require_ga4_property()?.to_string();
     let sc_url = config.require_search_console_url()?;
     let property_name = config
@@ -27,8 +28,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
     // ── Parallel API calls ──────────────────────────────────────────────────
     let (ga_pages, ga_channels, sc_queries_cur, sc_queries_prev) = tokio::join!(
         // GA4: sessions per page (current + previous)
-        run_report(
-            access_token,
+        api.run_report(
             ReportRequest {
                 property_id: property_id.clone(),
                 date_ranges: vec![DateRange::last_n_days(days), DateRange::prev_period(days)],
@@ -40,8 +40,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             },
         ),
         // GA4: sessions per channel (current + previous)
-        run_report(
-            access_token,
+        api.run_report(
             ReportRequest {
                 property_id: property_id.clone(),
                 date_ranges: vec![DateRange::last_n_days(days), DateRange::prev_period(days)],
@@ -53,8 +52,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             },
         ),
         // SC: queries current period
-        sc_query(
-            access_token,
+        api.search_analytics(
             SearchAnalyticsRequest {
                 site_url: sc_url.to_string(),
                 start_date: helpers::days_ago(days),
@@ -65,8 +63,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
             },
         ),
         // SC: queries previous period
-        sc_query(
-            access_token,
+        api.search_analytics(
             SearchAnalyticsRequest {
                 site_url: sc_url.to_string(),
                 start_date: helpers::days_ago(days * 2),

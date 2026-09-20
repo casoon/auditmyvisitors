@@ -1,7 +1,8 @@
 use crate::config::AppConfig;
 use crate::domain::{AiPageRow, AiTrafficReport, Insight, InsightCategory, InsightSeverity, SourceRow};
 use crate::errors::Result;
-use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
+use crate::google::api::GoogleApi;
+use crate::google::analytics_data::{DateRange, ReportRequest};
 use crate::helpers;
 
 /// Known AI referrer domains
@@ -29,7 +30,7 @@ fn is_ai_source(source: &str) -> bool {
     AI_DOMAINS.iter().any(|ai| s.contains(ai))
 }
 
-pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<AiTrafficReport> {
+pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Result<AiTrafficReport> {
     let property_id = config.require_ga4_property()?.to_string();
     let property_name = config
         .properties
@@ -92,9 +93,9 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
     };
 
     let (source_report, ai_page_report, prev_ai_report) = tokio::join!(
-        run_report(access_token, source_req),
-        run_report(access_token, ai_page_req),
-        run_report(access_token, prev_ai_req),
+        api.run_report(source_req),
+        api.run_report(ai_page_req),
+        api.run_report(prev_ai_req),
     );
     let source_report = source_report?;
     let ai_page_report = ai_page_report?;

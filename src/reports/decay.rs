@@ -1,11 +1,12 @@
 use crate::config::AppConfig;
 use crate::domain::{DecayPage, DecayReport, Insight, InsightCategory, InsightSeverity};
 use crate::errors::Result;
-use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::google::api::GoogleApi;
+use crate::google::search_console::SearchAnalyticsRequest;
 use crate::helpers;
 use std::collections::HashMap;
 
-pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<DecayReport> {
+pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Result<DecayReport> {
     let sc_url = config.require_search_console_url()?;
     let property_name = config
         .properties
@@ -36,8 +37,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
     };
 
     let (current_resp, prev_resp) = tokio::join!(
-        query(access_token, current_req),
-        query(access_token, prev_req),
+        api.search_analytics(current_req),
+        api.search_analytics(prev_req),
     );
     let current_resp = current_resp?;
     let prev_resp = prev_resp?;

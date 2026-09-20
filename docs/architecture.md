@@ -31,6 +31,7 @@ src/
 ├── storage/           # Token-Persistenz (tokens.json)
 ├── config/            # AppConfig: Properties, ReportConfig, ThresholdsConfig, Cluster
 ├── google/            # API-Clients + gemeinsamer Retry-/Timeout-Layer (mod.rs)
+│   └── api.rs         # GoogleApi-Trait: die Naht zwischen Reports und Google
 ├── domain/            # interne Report- und Zeilenmodelle, serde-serialisierbar
 ├── reports/           # ein Modul je Report: baut Domain-Modelle aus API-Daten
 ├── insights/          # regelbasierte Insights auf Domain-Modellen
@@ -56,6 +57,12 @@ Auswertung des `Retry-After`-Headers bei HTTP 429. Die drei Clients darüber
 Domain-Typen und geben `errors::Result` zurück.
 
 ## Report-Schicht
+
+Reports sprechen nicht direkt mit den HTTP-Clients, sondern über das
+`GoogleApi`-Trait in `src/google/api.rs`. `build` ist generisch über
+`&impl GoogleApi` und sieht nie ein Token: `HttpGoogleApi` redet mit Google,
+`FixtureGoogleApi` (nur unter `#[cfg(test)]`) antwortet aus hinterlegten
+Responses und macht die Schicht ohne Login testbar.
 
 Jedes Modul unter `src/reports/` baut genau ein Domain-Modell:
 `overview`, `top_pages`, `page_detail`, `compare`, `opportunities`, `queries`,

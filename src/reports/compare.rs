@@ -6,15 +6,16 @@ use crate::domain::{
     TrafficSourceBreakdown,
 };
 use crate::errors::{AppError, Result};
-use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
-use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::google::api::GoogleApi;
+use crate::google::analytics_data::{DateRange, ReportRequest};
+use crate::google::search_console::SearchAnalyticsRequest;
 use crate::helpers;
 use crate::insights::insights_for_comparison;
 use serde_json::json;
 
 pub async fn build(
     config: &AppConfig,
-    access_token: &str,
+    api: &impl GoogleApi,
     url: Option<&str>,
     before_days: u32,
     after_days: u32,
@@ -39,7 +40,7 @@ pub async fn build(
     let fmt = |d: NaiveDate| d.format("%Y-%m-%d").to_string();
 
     let (before_traffic, before_search) = fetch_period(
-        access_token,
+        api,
         &property_id,
         sc_url.as_deref(),
         url,
@@ -48,7 +49,7 @@ pub async fn build(
     ).await?;
 
     let (after_traffic, after_search) = fetch_period(
-        access_token,
+        api,
         &property_id,
         sc_url.as_deref(),
         url,
@@ -95,7 +96,7 @@ pub async fn build(
 }
 
 async fn fetch_period(
-    access_token: &str,
+    api: &impl GoogleApi,
     property_id: &str,
     sc_url: Option<&str>,
     page_url: Option<&str>,
@@ -127,7 +128,7 @@ async fn fetch_period(
         order_by: None,
     };
 
-    let ga_report = run_report(access_token, req).await?;
+    let ga_report = api.run_report(req).await?;
 
     let mut traffic = TrafficSourceBreakdown::default();
     for row in &ga_report.rows {
@@ -152,7 +153,7 @@ async fn fetch_period(
             row_limit: Some(500),
         };
 
-        let sc_resp = query(access_token, sc_req).await?;
+        let sc_resp = api.search_analytics(sc_req).await?;
 
         let (clicks, impressions) = sc_resp
             .rows

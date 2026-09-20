@@ -4,13 +4,14 @@ use crate::domain::{
     PageSummary, QueryRow, SearchPerformanceBreakdown,
 };
 use crate::errors::Result;
-use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
-use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::google::api::GoogleApi;
+use crate::google::analytics_data::{DateRange, ReportRequest};
+use crate::google::search_console::SearchAnalyticsRequest;
 use crate::helpers;
 use crate::opportunities::generate_opportunities;
 use std::collections::HashMap;
 
-pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<OpportunitiesReport> {
+pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Result<OpportunitiesReport> {
     let property_id = config.require_ga4_property()?.to_string();
     let sc_url = config.require_search_console_url()?;
     let property_name = config
@@ -56,9 +57,9 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
     };
 
     let (queries_resp, ga_report, sc_pages_resp) = tokio::join!(
-        query(access_token, queries_req),
-        run_report(access_token, pages_req),
-        query(access_token, sc_pages_req),
+        api.search_analytics(queries_req),
+        api.run_report(pages_req),
+        api.search_analytics(sc_pages_req),
     );
 
     let queries_resp = queries_resp?;

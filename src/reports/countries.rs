@@ -1,11 +1,12 @@
 use crate::config::AppConfig;
 use crate::domain::{CountriesReport, CountryDetail, Insight, InsightCategory, InsightSeverity};
 use crate::errors::Result;
-use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
+use crate::google::api::GoogleApi;
+use crate::google::analytics_data::{DateRange, ReportRequest};
 
 pub async fn build(
     config: &AppConfig,
-    access_token: &str,
+    api: &impl GoogleApi,
     days: u32,
     limit: usize,
 ) -> Result<CountriesReport> {
@@ -34,7 +35,7 @@ pub async fn build(
         })]),
     };
 
-    let report = run_report(access_token, req).await?;
+    let report = api.run_report(req).await?;
 
     let mut total_sessions = 0i64;
     let mut countries: Vec<CountryDetail> = Vec::new();

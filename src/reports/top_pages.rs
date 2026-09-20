@@ -1,15 +1,16 @@
 use crate::config::AppConfig;
 use crate::domain::{PageSummary, SearchPerformanceBreakdown, TopPagesReport};
 use crate::errors::Result;
-use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
-use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::google::api::GoogleApi;
+use crate::google::analytics_data::{DateRange, ReportRequest};
+use crate::google::search_console::SearchAnalyticsRequest;
 use crate::helpers;
 use crate::insights::insights_for_top_pages;
 use std::collections::HashMap;
 
 pub async fn build(
     config: &AppConfig,
-    access_token: &str,
+    api: &impl GoogleApi,
     days: u32,
     limit: usize,
     sort_by: &str,
@@ -57,8 +58,8 @@ pub async fn build(
     };
 
     let (ga_report, event_report) = tokio::join!(
-        run_report(access_token, req),
-        run_report(access_token, event_req),
+        api.run_report(req),
+        api.run_report(event_req),
     );
     let ga_report = ga_report?;
     let event_report = event_report?;
@@ -147,8 +148,8 @@ pub async fn build(
         };
 
         let (sc_resp, sc_query_resp) = tokio::join!(
-            query(access_token, sc_req),
-            query(access_token, sc_query_req),
+            api.search_analytics(sc_req),
+            api.search_analytics(sc_query_req),
         );
         let sc_resp = sc_resp?;
         let sc_query_resp = sc_query_resp?;
@@ -183,4 +184,165 @@ pub async fn build(
 
     insights_for_top_pages(&mut report, &config.thresholds);
     Ok(report)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::google::api::FixtureGoogleApi;
+
+    fn config() -> AppConfig {
+        let mut c = AppConfig::default();
+        c.set_ga4_property("properties/1".into(), "example.com".into());
+        c.set_search_console_url("https://example.com/".into());
+        c
+    }
+
+    /// GA4 reports paths, Search Console reports absolute URLs, and the two
+    /// disagree about the trailing slash. If the reconciliation misses, the
+    /// page keeps its sessions and silently loses every click.
+    #[tokio::test]
+    async fn search_data_attaches_across_the_path_url_gap() {
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["pagePath", "sessionDefaultChannelGroup"],
+                vec![(
+                    vec!["/blog/rust", "Organic Search"],
+                    vec!["120", "0.65", "90.0", "0.3", "80", "4"],
+                )],
+            )
+            .with_report(&["pagePath", "eventName"], vec![])
+            .with_search(
+                &["page"],
+                // trailing slash, absolute URL — neither matches the GA4 key verbatim
+                vec![(vec!["https://example.com/blog/rust/"], 42.0, 900.0, 0.046, 7.4)],
+            )
+            .with_search(&["page", "query"], vec![]);
+
+        let report = build(&config(), &api, 28, 20, "sessions").await.unwrap();
+
+        let page = report.pages.iter().find(|p| p.url == "/blog/rust").unwrap();
+        assert_eq!(page.sessions, 120);
+        assert_eq!(page.search.clicks, 42.0);
+        assert_eq!(page.search.impressions, 900.0);
+    }
+
+    /// The same gap in the other direction: GA4 keeps the trailing slash and
+    /// Search Console does not. Dropping this branch broke no test before it
+    /// was written.
+    #[tokio::test]
+    async fn the_path_url_gap_reconciles_in_both_directions() {
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["pagePath", "sessionDefaultChannelGroup"],
+                vec![(
+                    vec!["/blog/rust/", "Organic Search"],
+                    vec!["30", "0.5", "30.0", "0.4", "20", "1"],
+                )],
+            )
+            .with_report(&["pagePath", "eventName"], vec![])
+            .with_search(
+                &["page"],
+                vec![(vec!["https://example.com/blog/rust"], 11.0, 200.0, 0.055, 6.0)],
+            )
+            .with_search(&["page", "query"], vec![]);
+
+        let report = build(&config(), &api, 28, 20, "sessions").await.unwrap();
+
+        let page = report.pages.iter().find(|p| p.url == "/blog/rust/").unwrap();
+        assert_eq!(page.search.clicks, 11.0);
+    }
+
+    /// A URL Search Console knows and GA4 does not is dropped. That is the
+    /// current contract, and it is the reason a page with impressions but no
+    /// sessions never shows up in this report.
+    #[tokio::test]
+    async fn search_rows_without_a_ga4_page_are_dropped() {
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["pagePath", "sessionDefaultChannelGroup"],
+                vec![(
+                    vec!["/blog/rust", "Organic Search"],
+                    vec!["10", "0.5", "30.0", "0.4", "5", "0"],
+                )],
+            )
+            .with_report(&["pagePath", "eventName"], vec![])
+            .with_search(
+                &["page"],
+                vec![
+                    (vec!["https://example.com/blog/rust"], 5.0, 100.0, 0.05, 9.0),
+                    (vec!["https://example.com/ghost-page"], 99.0, 999.0, 0.1, 2.0),
+                ],
+            )
+            .with_search(&["page", "query"], vec![]);
+
+        let report = build(&config(), &api, 28, 20, "sessions").await.unwrap();
+
+        assert_eq!(report.pages.len(), 1);
+        assert_eq!(report.pages[0].search.clicks, 5.0);
+    }
+
+    /// Per-page queries are merged, sorted by clicks and capped at five.
+    #[tokio::test]
+    async fn top_queries_are_ranked_and_capped() {
+        let queries: Vec<(Vec<&str>, f64, f64, f64, f64)> = vec![
+            (vec!["https://example.com/blog/rust", "rust cli"], 3.0, 50.0, 0.06, 8.0),
+            (vec!["https://example.com/blog/rust", "rust reporting"], 9.0, 80.0, 0.11, 4.0),
+            (vec!["https://example.com/blog/rust", "rust ga4"], 1.0, 20.0, 0.05, 12.0),
+            (vec!["https://example.com/blog/rust", "rust gsc"], 7.0, 60.0, 0.11, 5.0),
+            (vec!["https://example.com/blog/rust", "rust audit"], 2.0, 30.0, 0.06, 9.0),
+            (vec!["https://example.com/blog/rust", "rust tool"], 5.0, 40.0, 0.12, 6.0),
+        ];
+
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["pagePath", "sessionDefaultChannelGroup"],
+                vec![(
+                    vec!["/blog/rust", "Organic Search"],
+                    vec!["10", "0.5", "30.0", "0.4", "5", "0"],
+                )],
+            )
+            .with_report(&["pagePath", "eventName"], vec![])
+            .with_search(&["page"], vec![])
+            .with_search(&["page", "query"], queries);
+
+        let report = build(&config(), &api, 28, 20, "sessions").await.unwrap();
+        let top = &report.pages[0].search.top_queries;
+
+        assert_eq!(top.len(), 5, "capped at five");
+        assert_eq!(top[0].query, "rust reporting", "highest clicks first");
+        assert_eq!(top[1].query, "rust gsc");
+        assert!(
+            !top.iter().any(|q| q.query == "rust ga4"),
+            "the weakest query is the one dropped"
+        );
+    }
+
+    /// Sorting by clicks has to run after the Search Console merge, otherwise
+    /// it ranks on data that is not there yet.
+    #[tokio::test]
+    async fn sort_by_clicks_uses_merged_search_data() {
+        let api = FixtureGoogleApi::new()
+            .with_report(
+                &["pagePath", "sessionDefaultChannelGroup"],
+                vec![
+                    (vec!["/many-sessions", "Direct"], vec!["500", "0.5", "10.0", "0.5", "400", "0"]),
+                    (vec!["/many-clicks", "Organic Search"], vec!["20", "0.8", "60.0", "0.2", "15", "2"]),
+                ],
+            )
+            .with_report(&["pagePath", "eventName"], vec![])
+            .with_search(
+                &["page"],
+                vec![
+                    (vec!["https://example.com/many-sessions"], 1.0, 10.0, 0.1, 30.0),
+                    (vec!["https://example.com/many-clicks"], 250.0, 5000.0, 0.05, 3.0),
+                ],
+            )
+            .with_search(&["page", "query"], vec![]);
+
+        let report = build(&config(), &api, 28, 20, "clicks").await.unwrap();
+
+        assert_eq!(report.pages[0].url, "/many-clicks");
+        assert_eq!(report.pages[1].url, "/many-sessions");
+    }
 }

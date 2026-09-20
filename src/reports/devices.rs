@@ -1,9 +1,10 @@
 use crate::config::AppConfig;
 use crate::domain::{DeviceDetail, DevicesReport, Insight, InsightCategory, InsightSeverity};
 use crate::errors::Result;
-use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
+use crate::google::api::GoogleApi;
+use crate::google::analytics_data::{DateRange, ReportRequest};
 
-pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<DevicesReport> {
+pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Result<DevicesReport> {
     let property_id = config.require_ga4_property()?.to_string();
     let property_name = config
         .properties
@@ -30,7 +31,7 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         })]),
     };
 
-    let report = run_report(access_token, req).await?;
+    let report = api.run_report(req).await?;
 
     let mut total_sessions = 0i64;
     let mut devices: Vec<DeviceDetail> = Vec::new();

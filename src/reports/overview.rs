@@ -4,8 +4,9 @@ use crate::domain::{
     SourceRow, TrafficSourceBreakdown,
 };
 use crate::errors::Result;
-use crate::google::analytics_data::{DateRange, ReportRequest, run_report};
-use crate::google::search_console::{query, SearchAnalyticsRequest};
+use crate::google::api::GoogleApi;
+use crate::google::analytics_data::{DateRange, ReportRequest};
+use crate::google::search_console::SearchAnalyticsRequest;
 use crate::helpers;
 use crate::insights::insights_for_overview;
 use crate::opportunities::opportunities_from_overview;
@@ -35,7 +36,7 @@ fn is_ai_source(source: &str) -> bool {
     AI_DOMAINS.iter().any(|ai| s.contains(ai))
 }
 
-pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<SiteOverviewReport> {
+pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Result<SiteOverviewReport> {
     let property_id = config.require_ga4_property()?.to_string();
     let sc_url = config.require_search_console_url().ok().map(String::from);
     let property_name = config
@@ -98,9 +99,9 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
     };
 
     let (channel_report, source_report, ai_page_report) = tokio::join!(
-        run_report(access_token, channel_req),
-        run_report(access_token, source_req),
-        run_report(access_token, ai_page_req),
+        api.run_report(channel_req),
+        api.run_report(source_req),
+        api.run_report(ai_page_req),
     );
     let channel_report  = channel_report?;
     let source_report   = source_report?;
@@ -200,8 +201,8 @@ pub async fn build(config: &AppConfig, access_token: &str, days: u32) -> Result<
         };
 
         let (totals_resp, queries_resp) = tokio::join!(
-            query(access_token, totals_req),
-            query(access_token, queries_req),
+            api.search_analytics(totals_req),
+            api.search_analytics(queries_req),
         );
         let totals_resp = totals_resp?;
         let queries_resp = queries_resp?;

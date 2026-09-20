@@ -3,6 +3,7 @@ use crate::ui::style::Paint;
 
 use crate::auth;
 use crate::config::AppConfig;
+use crate::google::api::GoogleApi;
 use crate::google;
 
 /// Ensure the user is authenticated and has a property selected.
@@ -30,6 +31,7 @@ pub async fn ensure_ready(config: &mut AppConfig) -> anyhow::Result<String> {
     let token = auth::ensure_valid_token()
         .await
         .context("Failed to load token")?;
+    let api = google::api::HttpGoogleApi::new(token.clone());
 
     // ── Step 2: Property selection ──────────────────────────────────────────
     if config.properties.ga4_property_id.is_some() {
@@ -53,11 +55,11 @@ pub async fn ensure_ready(config: &mut AppConfig) -> anyhow::Result<String> {
             .prompt()?;
 
         if !keep {
-            select_properties(config, &token).await?;
+            select_properties(config, &api).await?;
         }
     } else {
         println!("No property selected yet.\n");
-        select_properties(config, &token).await?;
+        select_properties(config, &api).await?;
     }
 
     println!();
@@ -65,10 +67,10 @@ pub async fn ensure_ready(config: &mut AppConfig) -> anyhow::Result<String> {
 }
 
 /// Interactive GA4 + Search Console property selection (shared logic).
-async fn select_properties(config: &mut AppConfig, token: &str) -> anyhow::Result<()> {
+async fn select_properties(config: &mut AppConfig, api: &impl GoogleApi) -> anyhow::Result<()> {
     let (ga4_props, sc_sites) = tokio::join!(
-        google::analytics_admin::list_properties(token),
-        google::search_console::list_sites(token),
+        api.list_properties(),
+        api.list_sites(),
     );
     let ga4_props = ga4_props?;
     let sc_sites = sc_sites?;

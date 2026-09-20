@@ -1,11 +1,11 @@
 use crate::config::AppConfig;
 use crate::domain::{PageSummary, SiteHealthReport, SitemapEntry, UrlInspectionResult};
 use crate::errors::Result;
-use crate::google::search_console;
+use crate::google::api::GoogleApi;
 
 pub async fn build(
     config: &AppConfig,
-    access_token: &str,
+    api: &impl GoogleApi,
     problem_pages: &[PageSummary],
 ) -> Result<SiteHealthReport> {
     let sc_url = config.require_search_console_url()?.to_string();
@@ -23,7 +23,7 @@ pub async fn build(
     };
 
     // ── 1. Sitemaps ───────────────────────────────────────────────────────────
-    let sitemap_data = search_console::list_sitemaps(access_token, &sc_url)
+    let sitemap_data = api.list_sitemaps(&sc_url)
         .await
         .unwrap_or_default();
 
@@ -58,7 +58,7 @@ pub async fn build(
 
     let mut url_inspections: Vec<UrlInspectionResult> = Vec::new();
     for url in &inspect_targets {
-        match search_console::inspect_url(access_token, &sc_url, url).await {
+        match api.inspect_url(&sc_url, url).await {
             Ok(data) => url_inspections.push(UrlInspectionResult {
                 url:              data.url,
                 verdict:          data.verdict,
