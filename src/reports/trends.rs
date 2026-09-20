@@ -220,3 +220,162 @@ fn date_to_week_start(date_str: &str) -> String {
         date_str.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::google::api::FixtureGoogleApi;
+
+    fn config() -> AppConfig {
+        let mut c = AppConfig::default();
+        c.set_ga4_property("properties/1".into(), "example.com".into());
+        c.set_search_console_url("https://example.com/".into());
+        c
+    }
+
+    fn api(
+        ga_daily: Vec<(Vec<&str>, Vec<&str>)>,
+        sc_daily: Vec<(Vec<&str>, f64, f64, f64, f64)>,
+        recent_queries: Vec<(Vec<&str>, f64, f64, f64, f64)>,
+        prev_queries: Vec<(Vec<&str>, f64, f64, f64, f64)>,
+    ) -> FixtureGoogleApi {
+        FixtureGoogleApi::new()
+            .with_report(&["date"], ga_daily)
+            .with_search(&["date"], sc_daily)
+            .with_search_at(&["query"], &helpers::days_ago(14), recent_queries)
+            .with_search_at(&["query"], &helpers::days_ago(28), prev_queries)
+    }
+
+    /// GA4 dates arrive as `YYYYMMDD` and Search Console dates as `YYYY-MM-DD`.
+    /// If the two formats do not bucket to the same week, every week ends up
+    /// with sessions or with clicks but never both.
+    #[tokio::test]
+    async fn both_date_formats_land_in_the_same_week() {
+        let report = build(
+            &config(),
+            &api(
+                vec![(vec!["20260304"], vec!["300"])],
+                vec![(vec!["2026-03-04"], 50.0, 1000.0, 0.05, 6.0)],
+                vec![],
+                vec![],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report.weeks.len(), 1);
+        let week = &report.weeks[0];
+        assert_eq!(week.week_start, "2026-03-02", "the Monday of that week");
+        assert_eq!(week.sessions, 300);
+        assert_eq!(week.clicks, 50.0, "search data joined onto the same week");
+    }
+
+    /// Days collapse into their ISO week, and weeks come out in order.
+    #[tokio::test]
+    async fn days_aggregate_into_ordered_weeks() {
+        let report = build(
+            &config(),
+            &api(
+                vec![
+                    (vec!["20260309"], vec!["10"]),
+                    (vec!["20260302"], vec!["100"]),
+                    (vec!["20260308"], vec!["200"]),
+                ],
+                vec![],
+                vec![],
+                vec![],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        let starts: Vec<&str> = report.weeks.iter().map(|w| w.week_start.as_str()).collect();
+        assert_eq!(starts, vec!["2026-03-02", "2026-03-09"], "ascending");
+        assert_eq!(report.weeks[0].sessions, 300, "Monday plus the Sunday after it");
+        assert_eq!(report.weeks[1].sessions, 10);
+    }
+
+    /// The weekly position is weighted by impressions, so a single quiet day at
+    /// a poor rank does not drag the week down.
+    #[tokio::test]
+    async fn weekly_position_is_impression_weighted() {
+        let report = build(
+            &config(),
+            &api(
+                vec![(vec!["20260302"], vec!["10"])],
+                vec![
+                    (vec!["2026-03-02"], 0.0, 9000.0, 0.0, 2.0),
+                    (vec!["2026-03-03"], 0.0, 1000.0, 0.0, 22.0),
+                ],
+                vec![],
+                vec![],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        // (2 * 9000 + 22 * 1000) / 10000 = 4.0, not the mean of 12
+        assert!((report.weeks[0].avg_position - 4.0).abs() < 1e-9, "{}", report.weeks[0].avg_position);
+    }
+
+    /// Only moves of five places or more are reported, and an improvement is a
+    /// negative delta because a lower position number is better.
+    #[tokio::test]
+    async fn ranking_jumps_need_five_places() {
+        let report = build(
+            &config(),
+            &api(
+                vec![(vec!["20260302"], vec!["1"])],
+                vec![],
+                vec![
+                    (vec!["climber"], 0.0, 0.0, 0.0, 3.0),
+                    (vec!["faller"], 0.0, 0.0, 0.0, 18.0),
+                    (vec!["steady"], 0.0, 0.0, 0.0, 9.0),
+                ],
+                vec![
+                    (vec!["climber"], 0.0, 0.0, 0.0, 14.0),
+                    (vec!["faller"], 0.0, 0.0, 0.0, 7.0),
+                    (vec!["steady"], 0.0, 0.0, 0.0, 11.0),
+                ],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        let labels: Vec<&str> = report.ranking_jumps.iter().map(|r| r.label.as_str()).collect();
+        assert!(!labels.contains(&"steady"), "two places is not a jump");
+        assert_eq!(labels.len(), 2);
+
+        let climber = report.ranking_jumps.iter().find(|r| r.label == "climber").unwrap();
+        assert_eq!(climber.previous, 14.0);
+        assert_eq!(climber.current, 3.0);
+        assert!(climber.delta < 0.0, "an improvement reads as a negative delta");
+
+        // best improvement first
+        assert_eq!(report.ranking_jumps[0].label, "climber");
+    }
+
+    /// A query that only appears in the recent period has nothing to compare
+    /// against and is not a jump.
+    #[tokio::test]
+    async fn a_query_without_a_previous_position_is_not_a_jump() {
+        let report = build(
+            &config(),
+            &api(
+                vec![(vec!["20260302"], vec!["1"])],
+                vec![],
+                vec![(vec!["brand new"], 0.0, 0.0, 0.0, 2.0)],
+                vec![],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        assert!(report.ranking_jumps.is_empty());
+    }
+}
