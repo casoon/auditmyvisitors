@@ -56,6 +56,18 @@ Auswertung des `Retry-After`-Headers bei HTTP 429. Die drei Clients darüber
 (`analytics_admin`, `analytics_data`, `search_console`) mappen ihre Responses direkt in
 Domain-Typen und geben `errors::Result` zurück.
 
+### Truncation
+
+Jede Anfrage setzt ein Zeilenlimit. `HttpGoogleApi` vergleicht das Ergebnis mit
+dem, was möglich gewesen wäre — bei GA4 über `rowCount`, bei der Search Console
+über eine volle Seite als einziges verfügbares Signal — und sammelt die Treffer.
+`main.rs` und der Menümodus holen sie nach dem Report über `api.truncations()`
+ab, `ui::print_truncation_warnings` gibt sie aus. Die Report-Module bleiben davon
+unberührt; genau deshalb steht es dort und nicht in fünfzehn Modulen.
+
+Gepaginiert wird noch nicht — die Warnung sagt, dass Zahlen unvollständig sind,
+sie macht sie nicht vollständig.
+
 ## Report-Schicht
 
 Reports sprechen nicht direkt mit den HTTP-Clients, sondern über das

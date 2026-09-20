@@ -62,7 +62,7 @@ PDF-Exporte landen per Default unter `./output/<property-slug>-<datum>.pdf`.
 
 ## Tests
 
-97 Unit-Tests, inline in den jeweiligen Modulen (`#[cfg(test)]`), kein separates
+99 Unit-Tests, inline in den jeweiligen Modulen (`#[cfg(test)]`), kein separates
 `tests/`-Verzeichnis. Getestet werden reine Funktionen: Scores, Intent-Klassifikation,
 Clustering, Schwellwertlogik, Insight-Rendering, Formatierung — und seit der
 `GoogleApi`-Naht auch `reports::top_pages`, `page_detail`, `overview`, `compare`,

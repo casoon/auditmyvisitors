@@ -331,6 +331,8 @@ async fn handle_report(action: ReportAction, config: &AppConfig) -> anyhow::Resu
             ui::print_countries(&report);
         }
     }
+
+    ui::print_truncation_warnings(&api.truncations());
     Ok(())
 }
 
@@ -343,13 +345,13 @@ struct JsonExport {
 }
 
 async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Result<()> {
+    let api = google::api::HttpGoogleApi::new(
+        auth::ensure_valid_token().await
+            .context("Please log in first: auditmyvisitors auth login")?,
+    );
+
     match action {
         ExportAction::Json { days, output } => {
-            let api = google::api::HttpGoogleApi::new(
-                auth::ensure_valid_token().await
-                    .context("Please log in first: auditmyvisitors auth login")?,
-            );
-
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Loading data for last {} days…", days));
 
@@ -376,11 +378,6 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
         }
 
         ExportAction::Csv { report: report_type, days, limit, output } => {
-            let api = google::api::HttpGoogleApi::new(
-                auth::ensure_valid_token().await
-                    .context("Please log in first: auditmyvisitors auth login")?,
-            );
-
             let days = days.unwrap_or(config.report.default_days);
             let pb = spinner(&format!("Loading data for last {} days…", days));
 
@@ -466,11 +463,6 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
         }
 
         ExportAction::Pdf { days, limit, output } => {
-            let api = google::api::HttpGoogleApi::new(
-                auth::ensure_valid_token().await
-                    .context("Please log in first: auditmyvisitors auth login")?,
-            );
-
             let days = days.unwrap_or(config.report.default_days);
 
             let pb = spinner(&format!("Loading data for last {} days…", days));
@@ -519,6 +511,8 @@ async fn handle_export(action: ExportAction, config: &AppConfig) -> anyhow::Resu
             println!("{} PDF saved: {}", "✓".ok(), path.accent());
         }
     }
+
+    ui::print_truncation_warnings(&api.truncations());
     Ok(())
 }
 

@@ -202,6 +202,8 @@ async fn run_full_report(config: &AppConfig, api: &impl GoogleApi, days: u32) ->
     let summary = narrative::management_summary(&narrative_input);
     ui::print_management_summary(&summary);
 
+    ui::print_truncation_warnings(&api.truncations());
+
     println!(
         "{}\n",
         "── Report complete ──".muted()

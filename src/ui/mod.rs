@@ -38,6 +38,57 @@ pub fn spinner(msg: &str) -> ProgressBar {
     pb
 }
 
+/// One line per set of dimensions, keeping the worst case.
+///
+/// A single command runs several reports, and they ask overlapping questions —
+/// `overview` and `top_pages` both want pages. Repeating the same warning once
+/// per request would bury it.
+fn worst_per_dimension(
+    truncations: &[crate::google::api::Truncation],
+) -> Vec<&crate::google::api::Truncation> {
+    let mut worst: Vec<&crate::google::api::Truncation> = Vec::new();
+    for t in truncations {
+        match worst.iter_mut().find(|w| w.what == t.what) {
+            Some(existing) if t.total > existing.total => *existing = t,
+            Some(_) => {}
+            None => worst.push(t),
+        }
+    }
+    worst
+}
+
+/// Tell the reader when a report is built on a partial answer.
+///
+/// A truncated result is worse than a missing one: the numbers look complete
+/// and are not. Reported once per run, per set of dimensions, after the tables
+/// so it is the last thing on screen.
+pub fn print_truncation_warnings(truncations: &[crate::google::api::Truncation]) {
+    if truncations.is_empty() {
+        return;
+    }
+
+    println!("{}", "PARTIAL DATA".heading());
+    for t in worst_per_dimension(truncations) {
+        match t.total {
+            Some(total) => println!(
+                "  {} {}: {} of {} rows — the figures above cover the top {}.",
+                "⚠".warn(),
+                t.what.accent(),
+                format_number(t.returned as i64),
+                format_number(total),
+                format_number(t.returned as i64),
+            ),
+            None => println!(
+                "  {} {}: {} rows, the maximum requested — there may be more.",
+                "⚠".warn(),
+                t.what.accent(),
+                format_number(t.returned as i64),
+            ),
+        }
+    }
+    println!();
+}
+
 pub fn print_welcome() {
     println!();
     println!("{}", "auditmyvisitors".accent());
@@ -1547,6 +1598,45 @@ mod tests {
     use super::*;
     use crate::domain::Insight;
     use runemark::{ColorMode, Console};
+
+    fn truncation(what: &str, returned: usize, total: Option<i64>) -> crate::google::api::Truncation {
+        crate::google::api::Truncation {
+            what: what.into(),
+            returned,
+            total,
+        }
+    }
+
+    /// One command runs several reports that ask overlapping questions, so the
+    /// same dimensions show up more than once. The reader should be told once,
+    /// about the worst case.
+    #[test]
+    fn repeated_dimensions_collapse_to_the_worst_case() {
+        let all = vec![
+            truncation("pagePath", 200, Some(4_000)),
+            truncation("pagePath", 500, Some(18_400)),
+            truncation("page+query", 2_500, None),
+        ];
+
+        let worst = worst_per_dimension(&all);
+
+        assert_eq!(worst.len(), 2);
+        let pages = worst.iter().find(|t| t.what == "pagePath").unwrap();
+        assert_eq!(pages.total, Some(18_400));
+        assert_eq!(pages.returned, 500);
+    }
+
+    /// Search Console reports no total, so those entries have nothing to
+    /// compare — the first one stands rather than being dropped.
+    #[test]
+    fn entries_without_a_total_survive() {
+        let all = vec![truncation("query", 500, None), truncation("query", 500, None)];
+
+        let worst = worst_per_dimension(&all);
+
+        assert_eq!(worst.len(), 1);
+        assert_eq!(worst[0].total, None);
+    }
 
     fn insight(severity: InsightSeverity, category: InsightCategory, headline: &str) -> Insight {
         Insight {

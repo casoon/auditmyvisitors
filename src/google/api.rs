@@ -19,6 +19,20 @@ use super::search_console::{
     SearchAnalyticsRequest, SearchAnalyticsResponse, SitemapInfo, UrlInspectionData,
 };
 
+/// A response that hit its row limit with more data behind it.
+///
+/// The Data API reports how many rows matched, so GA4 truncation is a fact.
+/// Search Console reports no total, so a full page of rows is the only signal
+/// there is — it can be a coincidence, which is why the wording differs.
+#[derive(Debug, Clone)]
+pub struct Truncation {
+    /// The dimensions that were asked for, e.g. `page+query`.
+    pub what: String,
+    pub returned: usize,
+    /// How many rows matched in total, where the API says so.
+    pub total: Option<i64>,
+}
+
 /// Everything the reports need from Google.
 pub trait GoogleApi {
     /// GA4 Data API `runReport`.
@@ -51,31 +65,71 @@ pub trait GoogleApi {
 
     /// Every Search Console property the account can read.
     fn list_sites(&self) -> impl std::future::Future<Output = Result<Vec<String>>>;
+
+    /// Responses that came back at their row limit during this run.
+    ///
+    /// The caller decides what to do with them; reports themselves stay
+    /// unaware, which is what keeps this out of all fifteen of them.
+    fn truncations(&self) -> Vec<Truncation> {
+        Vec::new()
+    }
 }
 
 /// Talks to the real Google APIs with a bearer token.
 pub struct HttpGoogleApi {
     access_token: String,
+    truncations: std::sync::Mutex<Vec<Truncation>>,
 }
 
 impl HttpGoogleApi {
     pub fn new(access_token: impl Into<String>) -> Self {
         Self {
             access_token: access_token.into(),
+            truncations: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    fn record(&self, truncation: Truncation) {
+        if let Ok(mut list) = self.truncations.lock() {
+            list.push(truncation);
         }
     }
 }
 
 impl GoogleApi for HttpGoogleApi {
     async fn run_report(&self, request: ReportRequest) -> Result<RunReportResponse> {
-        super::analytics_data::run_report(&self.access_token, request).await
+        let what = request.dimensions.join("+");
+        let response = super::analytics_data::run_report(&self.access_token, request).await?;
+
+        if response.row_count as usize > response.rows.len() {
+            self.record(Truncation {
+                what,
+                returned: response.rows.len(),
+                total: Some(response.row_count),
+            });
+        }
+
+        Ok(response)
     }
 
     async fn search_analytics(
         &self,
         request: SearchAnalyticsRequest,
     ) -> Result<SearchAnalyticsResponse> {
-        super::search_console::query(&self.access_token, request).await
+        let what = request.dimensions.join("+");
+        let limit = request.row_limit.unwrap_or(0) as usize;
+        let response = super::search_console::query(&self.access_token, request).await?;
+
+        // No total to compare against: a full page is the only hint available.
+        if limit > 0 && response.rows.len() >= limit {
+            self.record(Truncation {
+                what,
+                returned: response.rows.len(),
+                total: None,
+            });
+        }
+
+        Ok(response)
     }
 
     async fn list_sitemaps(&self, site_url: &str) -> Result<Vec<SitemapInfo>> {
@@ -96,6 +150,13 @@ impl GoogleApi for HttpGoogleApi {
 
     async fn list_sites(&self) -> Result<Vec<String>> {
         super::search_console::list_sites(&self.access_token).await
+    }
+
+    fn truncations(&self) -> Vec<Truncation> {
+        self.truncations
+            .lock()
+            .map(|list| list.clone())
+            .unwrap_or_default()
     }
 }
 
