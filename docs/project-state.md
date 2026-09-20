@@ -62,14 +62,15 @@ PDF-Exporte landen per Default unter `./output/<property-slug>-<datum>.pdf`.
 
 ## Tests
 
-89 Unit-Tests, inline in den jeweiligen Modulen (`#[cfg(test)]`), kein separates
+97 Unit-Tests, inline in den jeweiligen Modulen (`#[cfg(test)]`), kein separates
 `tests/`-Verzeichnis. Getestet werden reine Funktionen: Scores, Intent-Klassifikation,
 Clustering, Schwellwertlogik, Insight-Rendering, Formatierung — und seit der
-`GoogleApi`-Naht auch `reports::top_pages`, `page_detail`, `overview`, `compare`
-und `decay` — GA4/Search-Console-Merge, sessionsgewichtete Mittelwerte, die
-Trennung von aktueller und Vorperiode sowie die Fenster-Arithmetik um ein
-Änderungsdatum. Die übrigen 10 Report-Module sind über dieselbe Naht testbar,
-haben aber noch keine Tests; die HTTP-Clients selbst ebenfalls nicht.
+`GoogleApi`-Naht auch `reports::top_pages`, `page_detail`, `overview`, `compare`,
+`decay`, `growth` und `trends` — GA4/Search-Console-Merge, sessionsgewichtete
+Mittelwerte, die Trennung von aktueller und Vorperiode, die Fenster-Arithmetik um
+ein Änderungsdatum und die ISO-Wochen-Bucketierung über beide Datumsformate. Die
+übrigen 8 Report-Module sind über dieselbe Naht testbar, haben aber noch keine
+Tests; die HTTP-Clients selbst ebenfalls nicht.
 
 `cargo test` und `cargo clippy --all-targets -- -D warnings` laufen sauber durch.
 
