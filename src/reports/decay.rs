@@ -174,3 +174,158 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
         insights,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::google::api::FixtureGoogleApi;
+
+    fn config() -> AppConfig {
+        let mut c = AppConfig::default();
+        c.set_ga4_property("properties/1".into(), "example.com".into());
+        c.set_search_console_url("https://example.com/".into());
+        c
+    }
+
+    fn api(
+        current: Vec<(Vec<&str>, f64, f64, f64, f64)>,
+        previous: Vec<(Vec<&str>, f64, f64, f64, f64)>,
+    ) -> FixtureGoogleApi {
+        FixtureGoogleApi::new()
+            .with_search_at(&["page"], &helpers::days_ago(28), current)
+            .with_search_at(&["page"], &helpers::days_ago(56), previous)
+    }
+
+    /// Both periods ask for the same dimension and differ only in their dates.
+    /// Reading them the wrong way round would report every recovering page as
+    /// decaying.
+    #[tokio::test]
+    async fn the_periods_are_not_swapped() {
+        let report = build(
+            &config(),
+            &api(
+                vec![(vec!["https://example.com/a"], 40.0, 1000.0, 0.04, 5.0)],
+                vec![(vec!["https://example.com/a"], 100.0, 2000.0, 0.05, 4.0)],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        let page = &report.declining_pages[0];
+        assert_eq!(page.clicks_before, 100.0);
+        assert_eq!(page.clicks_after, 40.0);
+        assert!((page.clicks_pct - -60.0).abs() < 1e-9);
+    }
+
+    /// The floor keeps noise out: a page that never had traffic worth the name
+    /// is not a decay story, however badly it fell.
+    #[tokio::test]
+    async fn pages_below_the_traffic_floor_are_ignored() {
+        let report = build(
+            &config(),
+            &api(
+                vec![(vec!["https://example.com/tiny"], 0.0, 2.0, 0.0, 40.0)],
+                // 4 clicks and 49 impressions — under both halves of the floor
+                vec![(vec!["https://example.com/tiny"], 4.0, 49.0, 0.0816, 10.0)],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        assert!(report.declining_pages.is_empty(), "{:?}", report.declining_pages);
+    }
+
+    /// One side of the floor is enough to qualify.
+    #[tokio::test]
+    async fn meeting_either_half_of_the_floor_qualifies() {
+        let report = build(
+            &config(),
+            &api(
+                vec![(vec!["https://example.com/impressions-only"], 0.0, 10.0, 0.0, 30.0)],
+                // no clicks, but impressions over the threshold
+                vec![(vec!["https://example.com/impressions-only"], 0.0, 500.0, 0.0, 12.0)],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report.declining_pages.len(), 1);
+        assert!((report.declining_pages[0].impressions_pct - -98.0).abs() < 1e-9);
+    }
+
+    /// Losing rank counts as decay even when the click count holds up — that is
+    /// the early warning the report exists for.
+    #[tokio::test]
+    async fn a_position_drop_alone_counts_as_decay() {
+        let report = build(
+            &config(),
+            &api(
+                vec![(vec!["https://example.com/slipping"], 50.0, 1000.0, 0.05, 11.0)],
+                vec![(vec!["https://example.com/slipping"], 50.0, 1000.0, 0.05, 8.0)],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report.declining_pages.len(), 1, "clicks flat, position three places worse");
+        assert!((report.declining_pages[0].position_delta - 3.0).abs() < 1e-9);
+    }
+
+    /// A page that vanished from the current period is the worst case and has
+    /// to survive the join, not fall out of it.
+    #[tokio::test]
+    async fn a_page_that_disappeared_is_reported_as_a_total_loss() {
+        let report = build(
+            &config(),
+            &api(
+                vec![(vec!["https://example.com/still-here"], 10.0, 500.0, 0.02, 6.0)],
+                vec![
+                    (vec!["https://example.com/still-here"], 10.0, 500.0, 0.02, 6.0),
+                    (vec!["https://example.com/gone"], 80.0, 1600.0, 0.05, 3.0),
+                ],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        let gone = report
+            .declining_pages
+            .iter()
+            .find(|p| p.url.ends_with("/gone"))
+            .expect("the vanished page is reported");
+        assert_eq!(gone.clicks_after, 0.0);
+        assert!((gone.clicks_pct - -100.0).abs() < 1e-9);
+    }
+
+    /// Ranking is by absolute clicks lost, so the biggest real loss leads —
+    /// not the steepest percentage on a small page.
+    #[tokio::test]
+    async fn ranking_follows_absolute_click_loss() {
+        let report = build(
+            &config(),
+            &api(
+                vec![
+                    (vec!["https://example.com/small"], 0.0, 100.0, 0.0, 9.0),
+                    (vec!["https://example.com/big"], 600.0, 20000.0, 0.03, 4.0),
+                ],
+                vec![
+                    // -100%, but only 20 clicks
+                    (vec!["https://example.com/small"], 20.0, 400.0, 0.05, 7.0),
+                    // -25%, but 200 clicks gone
+                    (vec!["https://example.com/big"], 800.0, 25000.0, 0.032, 3.0),
+                ],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report.declining_pages[0].url, "https://example.com/big");
+        assert_eq!(report.declining_pages[1].url, "https://example.com/small");
+    }
+}

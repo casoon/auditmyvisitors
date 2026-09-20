@@ -104,8 +104,16 @@ impl GoogleApi for HttpGoogleApi {
 /// Requests are matched on their dimensions, because that is what distinguishes
 /// the calls a report makes: `top_pages` asks GA4 for `pagePath` x channel and
 /// for `pagePath` x `eventName`, and Search Console for `page` and for
-/// `page` x `query`. An unregistered request panics rather than returning an
-/// empty result — a test that silently asserts over no data proves nothing.
+/// `page` x `query`.
+///
+/// Where a report asks the same question of two periods — `compare` before and
+/// after a change date, `decay` this period against the last — the dimensions
+/// are identical and only the start date differs. Those answers are registered
+/// with [`Self::with_report_at`] and [`Self::with_search_at`], which take
+/// precedence over a dimensions-only entry.
+///
+/// An unregistered request panics rather than returning an empty result — a
+/// test that silently asserts over no data proves nothing.
 #[cfg(test)]
 #[derive(Default)]
 pub struct FixtureGoogleApi {
@@ -123,13 +131,40 @@ impl FixtureGoogleApi {
         dimensions.join("+")
     }
 
+    fn dated_key(dimensions: &[String], start_date: &str) -> String {
+        format!("{}@{start_date}", dimensions.join("+"))
+    }
+
     /// Answer a GA4 `runReport` for these dimensions with these rows.
     ///
     /// Rows are `(dimension values, metric values)` in the order the request
     /// asks for them, as strings — the Data API returns every metric as a
     /// string, and the parsing of those strings is part of what is under test.
     pub fn with_report(
+        self,
+        dimensions: &[&str],
+        rows: Vec<(Vec<&str>, Vec<&str>)>,
+    ) -> Self {
+        self.insert_report(Self::key(&to_owned(dimensions)), dimensions, rows)
+    }
+
+    /// The same, for a request whose date range starts on `start_date`.
+    pub fn with_report_at(
+        self,
+        dimensions: &[&str],
+        start_date: &str,
+        rows: Vec<(Vec<&str>, Vec<&str>)>,
+    ) -> Self {
+        self.insert_report(
+            Self::dated_key(&to_owned(dimensions), start_date),
+            dimensions,
+            rows,
+        )
+    }
+
+    fn insert_report(
         mut self,
+        key: String,
         dimensions: &[&str],
         rows: Vec<(Vec<&str>, Vec<&str>)>,
     ) -> Self {
@@ -143,7 +178,7 @@ impl FixtureGoogleApi {
         let dimensions: Vec<String> = dimensions.iter().map(|d| d.to_string()).collect();
         let row_count = rows.len() as i64;
         self.reports.insert(
-            Self::key(&dimensions),
+            key,
             RunReportResponse {
                 dimension_headers: dimensions,
                 metric_headers: Vec::new(),
@@ -158,8 +193,26 @@ impl FixtureGoogleApi {
     ///
     /// Rows are `(keys, clicks, impressions, ctr, position)`.
     pub fn with_search(
-        mut self,
+        self,
         dimensions: &[&str],
+        rows: Vec<(Vec<&str>, f64, f64, f64, f64)>,
+    ) -> Self {
+        self.insert_search(Self::key(&to_owned(dimensions)), rows)
+    }
+
+    /// The same, for a query starting on `start_date`.
+    pub fn with_search_at(
+        self,
+        dimensions: &[&str],
+        start_date: &str,
+        rows: Vec<(Vec<&str>, f64, f64, f64, f64)>,
+    ) -> Self {
+        self.insert_search(Self::dated_key(&to_owned(dimensions), start_date), rows)
+    }
+
+    fn insert_search(
+        mut self,
+        key: String,
         rows: Vec<(Vec<&str>, f64, f64, f64, f64)>,
     ) -> Self {
         let rows = rows
@@ -174,9 +227,7 @@ impl FixtureGoogleApi {
                 }
             })
             .collect();
-        let dimensions: Vec<String> = dimensions.iter().map(|d| d.to_string()).collect();
-        self.searches
-            .insert(Self::key(&dimensions), SearchAnalyticsResponse { rows });
+        self.searches.insert(key, SearchAnalyticsResponse { rows });
         self
     }
 }
@@ -184,20 +235,33 @@ impl FixtureGoogleApi {
 #[cfg(test)]
 impl GoogleApi for FixtureGoogleApi {
     async fn run_report(&self, request: ReportRequest) -> Result<RunReportResponse> {
-        let key = Self::key(&request.dimensions);
-        self.reports.get(&key).cloned().ok_or_else(|| {
-            panic!("fixture has no GA4 report for dimensions `{key}`");
-        })
+        let start = request
+            .date_ranges
+            .first()
+            .map(|r| r.start_date.as_str())
+            .unwrap_or("");
+        let dated = Self::dated_key(&request.dimensions, start);
+        let plain = Self::key(&request.dimensions);
+        self.reports
+            .get(&dated)
+            .or_else(|| self.reports.get(&plain))
+            .cloned()
+            .ok_or_else(|| panic!("fixture has no GA4 report for `{dated}` or `{plain}`"))
     }
 
     async fn search_analytics(
         &self,
         request: SearchAnalyticsRequest,
     ) -> Result<SearchAnalyticsResponse> {
-        let key = Self::key(&request.dimensions);
-        self.searches.get(&key).cloned().ok_or_else(|| {
-            panic!("fixture has no Search Console response for dimensions `{key}`");
-        })
+        let dated = Self::dated_key(&request.dimensions, &request.start_date);
+        let plain = Self::key(&request.dimensions);
+        self.searches
+            .get(&dated)
+            .or_else(|| self.searches.get(&plain))
+            .cloned()
+            .ok_or_else(|| {
+                panic!("fixture has no Search Console response for `{dated}` or `{plain}`")
+            })
     }
 
     async fn list_sitemaps(&self, _site_url: &str) -> Result<Vec<SitemapInfo>> {
@@ -219,4 +283,9 @@ impl GoogleApi for FixtureGoogleApi {
     async fn list_sites(&self) -> Result<Vec<String>> {
         Ok(Vec::new())
     }
+}
+
+#[cfg(test)]
+fn to_owned(dimensions: &[&str]) -> Vec<String> {
+    dimensions.iter().map(|d| d.to_string()).collect()
 }

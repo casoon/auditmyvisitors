@@ -225,3 +225,106 @@ fn generate_summary(delta: &ComparisonDelta) -> String {
         parts.join("  ·  ")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::google::api::FixtureGoogleApi;
+
+    fn config() -> AppConfig {
+        let mut c = AppConfig::default();
+        c.set_ga4_property("properties/1".into(), "example.com".into());
+        c.set_search_console_url("https://example.com/".into());
+        c
+    }
+
+    /// The change date belongs to the *after* period, and the before period
+    /// ends the day prior. An off-by-one here puts the deploy day itself on the
+    /// wrong side of the comparison it is supposed to explain.
+    #[tokio::test]
+    async fn the_change_date_opens_the_after_period() {
+        let api = FixtureGoogleApi::new()
+            .with_report(&["sessionDefaultChannelGroup"], vec![])
+            .with_search(&["date"], vec![]);
+
+        let report = build(&config(), &api, None, 30, 30, "2026-03-01")
+            .await
+            .unwrap();
+
+        assert_eq!(report.before.start_date, "2026-01-30");
+        assert_eq!(report.before.end_date, "2026-02-28");
+        assert_eq!(report.after.start_date, "2026-03-01");
+        assert_eq!(report.after.end_date, "2026-03-30");
+    }
+
+    /// Asymmetric windows are allowed, and each has to span exactly what was
+    /// asked for.
+    #[tokio::test]
+    async fn windows_span_the_requested_number_of_days() {
+        let api = FixtureGoogleApi::new()
+            .with_report(&["sessionDefaultChannelGroup"], vec![])
+            .with_search(&["date"], vec![]);
+
+        let report = build(&config(), &api, None, 7, 14, "2026-03-01")
+            .await
+            .unwrap();
+
+        // 7 days ending 2026-02-28
+        assert_eq!(report.before.start_date, "2026-02-22");
+        assert_eq!(report.before.end_date, "2026-02-28");
+        // 14 days from 2026-03-01
+        assert_eq!(report.after.start_date, "2026-03-01");
+        assert_eq!(report.after.end_date, "2026-03-14");
+    }
+
+    /// Both periods ask the same question with the same dimensions and differ
+    /// only in their dates. Swapping the two answers would invert every delta
+    /// and turn a drop into a win.
+    #[tokio::test]
+    async fn the_two_periods_do_not_get_swapped() {
+        let api = FixtureGoogleApi::new()
+            .with_report_at(
+                &["sessionDefaultChannelGroup"],
+                "2026-01-30",
+                vec![(vec!["Organic Search"], vec!["1000"])],
+            )
+            .with_report_at(
+                &["sessionDefaultChannelGroup"],
+                "2026-03-01",
+                vec![(vec!["Organic Search"], vec!["750"])],
+            )
+            .with_search_at(
+                &["date"],
+                "2026-01-30",
+                vec![(vec!["2026-02-01"], 200.0, 4000.0, 0.05, 5.0)],
+            )
+            .with_search_at(
+                &["date"],
+                "2026-03-01",
+                vec![(vec!["2026-03-02"], 150.0, 3000.0, 0.05, 6.0)],
+            );
+
+        let report = build(&config(), &api, None, 30, 30, "2026-03-01")
+            .await
+            .unwrap();
+
+        assert_eq!(report.before.sessions, 1000);
+        assert_eq!(report.after.sessions, 750);
+        assert_eq!(report.delta.sessions_abs, -250);
+        assert!((report.delta.sessions_pct - -25.0).abs() < 1e-9);
+        assert_eq!(report.delta.clicks_abs, -50.0);
+        assert!((report.delta.position_abs - 1.0).abs() < 1e-9, "position got worse by 1");
+    }
+
+    /// A malformed `--since` is rejected before any request goes out.
+    #[tokio::test]
+    async fn an_unparseable_change_date_is_an_error() {
+        let api = FixtureGoogleApi::new();
+
+        let err = build(&config(), &api, None, 30, 30, "01.03.2026")
+            .await
+            .unwrap_err();
+
+        assert!(matches!(err, AppError::InvalidDate(d) if d == "01.03.2026"));
+    }
+}

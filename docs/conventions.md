@@ -64,8 +64,10 @@ die Hälfte der Nutzer unsichtbar.
 - Domain-Structs sind öffentlich und ohne Konstruktor — wird ein Feld ergänzt,
   müssen alle Testfixtures mitgezogen werden.
 - Report-Module werden über `FixtureGoogleApi` getestet, das Requests an ihren
-  Dimensionen erkennt. Ein nicht hinterlegter Request paniert absichtlich: ein Test,
-  der stillschweigend über leere Daten assertet, beweist nichts.
+  Dimensionen erkennt — und bei Reports, die dieselbe Frage für zwei Zeiträume
+  stellen, zusätzlich am Startdatum (`with_report_at` / `with_search_at`). Ein nicht
+  hinterlegter Request paniert absichtlich: ein Test, der stillschweigend über leere
+  Daten assertet, beweist nichts.
 
 ## Commits und Versionierung
 
