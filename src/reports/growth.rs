@@ -15,6 +15,17 @@ use crate::google::analytics_data::{DateRange, ReportRequest};
 use crate::google::search_console::SearchAnalyticsRequest;
 use crate::helpers;
 
+/// Does this row belong to the current period?
+///
+/// A request with two date ranges comes back with a `date_range_N` tag appended
+/// to the dimensions; one with a single range has no tag at all, and every row
+/// is current. The tag has to decide it: keying off the metric count instead
+/// counted every previous-period row into the current one as well, because
+/// these requests ask for exactly one metric and the test was always true.
+fn is_current(range_tag: &str) -> bool {
+    range_tag == "date_range_0" || !range_tag.starts_with("date_range_")
+}
+
 pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Result<GrowthReport> {
     let property_id = config.require_ga4_property()?.to_string();
     let sc_url = config.require_search_console_url()?;
@@ -89,7 +100,7 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
         let range_idx = row.dimension_values.last().cloned().unwrap_or_default();
         let sessions: f64 = row.metric_values.first().and_then(|v| v.parse().ok()).unwrap_or(0.0);
 
-        if range_idx == "date_range_0" || row.metric_values.len() == 1 {
+        if is_current(&range_idx) {
             *page_current.entry(path.clone()).or_default() += sessions;
         }
         if range_idx == "date_range_1" {
@@ -97,8 +108,6 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
         }
     }
 
-    // For multi-date-range responses, GA4 returns rows with dateRange dimension
-    // If not present, we use the first value as current
     let mut page_growth: Vec<GrowthRow> = page_current
         .iter()
         .map(|(path, &cur)| {
@@ -128,7 +137,7 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
         let range_idx = row.dimension_values.last().cloned().unwrap_or_default();
         let sessions: i64 = row.metric_values.first().and_then(|v| v.parse().ok()).unwrap_or(0);
 
-        if range_idx == "date_range_0" || row.metric_values.len() == 1 {
+        if is_current(&range_idx) {
             *ch_current.entry(channel.clone()).or_default() += sessions;
         }
         if range_idx == "date_range_1" {
@@ -255,4 +264,123 @@ pub async fn build(config: &AppConfig, api: &impl GoogleApi, days: u32) -> Resul
         channel_growth,
         insights,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::google::api::FixtureGoogleApi;
+
+    fn config() -> AppConfig {
+        let mut c = AppConfig::default();
+        c.set_ga4_property("properties/1".into(), "example.com".into());
+        c.set_search_console_url("https://example.com/".into());
+        c
+    }
+
+    fn api(pages: Vec<(Vec<&str>, Vec<&str>)>, channels: Vec<(Vec<&str>, Vec<&str>)>) -> FixtureGoogleApi {
+        FixtureGoogleApi::new()
+            .with_report(&["pagePath"], pages)
+            .with_report(&["sessionDefaultChannelGroup"], channels)
+            .with_search_at(&["query"], &helpers::days_ago(28), vec![])
+            .with_search_at(&["query"], &helpers::days_ago(56), vec![])
+    }
+
+    /// The whole report is current-versus-previous, so a row tagged
+    /// `date_range_1` must land in the previous bucket and nowhere else.
+    #[tokio::test]
+    async fn the_previous_period_does_not_leak_into_the_current_one() {
+        let report = build(
+            &config(),
+            &api(
+                vec![
+                    (vec!["/a", "date_range_0"], vec!["100"]),
+                    (vec!["/a", "date_range_1"], vec!["80"]),
+                ],
+                vec![],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        let row = report
+            .top_growing_pages
+            .iter()
+            .find(|r| r.label == "/a")
+            .expect("a page that grew from 80 to 100");
+        assert_eq!(row.current, 100.0, "current period only");
+        assert_eq!(row.previous, 80.0);
+        assert_eq!(row.delta, 20.0);
+    }
+
+    /// Same split for channels.
+    #[tokio::test]
+    async fn channel_growth_separates_the_periods() {
+        let report = build(
+            &config(),
+            &api(
+                vec![],
+                vec![
+                    (vec!["Organic Search", "date_range_0"], vec!["500"]),
+                    (vec!["Organic Search", "date_range_1"], vec!["400"]),
+                    (vec!["Direct", "date_range_0"], vec!["100"]),
+                    (vec!["Direct", "date_range_1"], vec!["300"]),
+                ],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        let organic = report
+            .channel_growth
+            .iter()
+            .find(|c| c.channel == "Organic Search")
+            .unwrap();
+        assert_eq!(organic.current_sessions, 500);
+        assert_eq!(organic.previous_sessions, 400);
+        assert_eq!(organic.delta, 100);
+
+        let direct = report
+            .channel_growth
+            .iter()
+            .find(|c| c.channel == "Direct")
+            .unwrap();
+        assert_eq!(direct.delta, -200);
+        // sorted by delta, biggest gain first
+        assert_eq!(report.channel_growth[0].channel, "Organic Search");
+    }
+
+    /// A page that only exists in the current period grew from nothing, and one
+    /// that only exists in the previous period is not a grower at all.
+    #[tokio::test]
+    async fn pages_present_in_only_one_period() {
+        let report = build(
+            &config(),
+            &api(
+                vec![
+                    (vec!["/new", "date_range_0"], vec!["50"]),
+                    (vec!["/gone", "date_range_1"], vec!["70"]),
+                ],
+                vec![],
+            ),
+            28,
+        )
+        .await
+        .unwrap();
+
+        let new = report
+            .top_growing_pages
+            .iter()
+            .find(|r| r.label == "/new")
+            .expect("the new page counts as growth");
+        assert_eq!(new.previous, 0.0);
+        assert_eq!(new.delta, 50.0);
+
+        assert!(
+            !report.top_growing_pages.iter().any(|r| r.label == "/gone"),
+            "a page with no current sessions cannot be growing"
+        );
+    }
 }
