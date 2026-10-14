@@ -1,0 +1,10 @@
+Export a full PDF report (fetches live data)
+
+Usage: auditmyvisitors export pdf [OPTIONS]
+
+Options:
+  -d, --days <DAYS>      Number of days to look back (default: 28)
+  -n, --limit <LIMIT>    How many top / weakest pages to include (default: 20, max: 200) [default: 20]
+  -o, --output <OUTPUT>  Output file path (default: ./output/<property>-YYYY-MM-DD.pdf)
+      --verbose          Enable verbose logging
+  -h, --help             Print help

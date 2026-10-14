@@ -1,0 +1,11 @@
+Export report data as CSV
+
+Usage: auditmyvisitors export csv [OPTIONS] --report <REPORT>
+
+Options:
+  -r, --report <REPORT>  Which report to export: top-pages, queries, opportunities, channels, clusters, devices, countries, decay
+  -d, --days <DAYS>      Number of days to look back (default: 28)
+  -n, --limit <LIMIT>    How many rows to include (default depends on report)
+  -o, --output <OUTPUT>  Output file path (default: stdout)
+      --verbose          Enable verbose logging
+  -h, --help             Print help

@@ -1,0 +1,10 @@
+Query-level search performance analysis
+
+Usage: auditmyvisitors report queries [OPTIONS]
+
+Options:
+  -d, --days <DAYS>        Number of days to look back (default: 28)
+  -n, --limit <LIMIT>      How many queries to show (default: 30)
+      --sort-by <SORT_BY>  Sort by: clicks (default), impressions, ctr, position [default: clicks]
+      --verbose            Enable verbose logging
+  -h, --help               Print help

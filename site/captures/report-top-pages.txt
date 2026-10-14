@@ -1,0 +1,10 @@
+Top pages ranked by sessions
+
+Usage: auditmyvisitors report top-pages [OPTIONS]
+
+Options:
+  -d, --days <DAYS>        Number of days to look back (default: 28)
+  -n, --limit <LIMIT>      How many pages to show (default: 20)
+      --sort-by <SORT_BY>  Sort by: sessions (default), clicks, impressions [default: sessions]
+      --verbose            Enable verbose logging
+  -h, --help               Print help

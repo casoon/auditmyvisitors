@@ -1,0 +1,103 @@
+---
+import {
+  Badge,
+  Badges,
+  BuildOutput,
+  CodeBlock,
+  Facts,
+  Features,
+  Hero,
+  Install,
+  Quickstart,
+  Terminal,
+} from '@casoon/pages-theme/components';
+import Base from '@casoon/pages-theme/layouts/Base.astro';
+import { capture } from '../showcase';
+
+const usage = `auditmyvisitors auth login          # log in with Google (opens the browser)
+auditmyvisitors properties select   # pick the GA4 and Search Console property
+auditmyvisitors report overview     # traffic, search performance, insights
+auditmyvisitors report compare --since 2026-03-01
+auditmyvisitors export pdf --days 90`;
+---
+
+<Base>
+  <Hero
+    title="GA4 and Search Console, one report, on your machine."
+    lead="auditmyvisitors combines Google Analytics 4 and Search Console in the terminal: site overview, top and weak pages, query performance, before/after comparisons around a change date, content decay, and a PDF export. It runs locally with your own Google login and read-only access. No backend, no BigQuery."
+  >
+    <Install
+      commands={[
+        {
+          label: 'macOS · Linux',
+          command:
+            'curl -fsSL https://raw.githubusercontent.com/casoon/auditmyvisitors/main/install.sh | bash',
+        },
+      ]}
+    />
+    <Badges>
+      <Badge>MIT</Badge>
+      <Badge>v0.3.1</Badge>
+      <Badge>Rust 1.88+</Badge>
+      <Badge>macOS arm64 · Linux · Windows</Badge>
+    </Badges>
+    <Terminal
+      slot="output"
+      title="auditmyvisitors report --help"
+      dots
+      ansi={capture('report.txt')}
+    />
+  </Hero>
+
+  <Facts
+    items={[
+      { value: '12', label: 'reports, from overview to countries' },
+      { value: '3', label: 'export formats: PDF, JSON, CSV' },
+      { value: '2', label: 'Google scopes, both read-only' },
+      { value: '0', label: 'servers between you and the Google APIs' },
+    ]}
+  />
+
+  <Features
+    items={[
+      {
+        title: 'Two sources, one view',
+        body: 'GA4 reports paths, Search Console full URLs. auditmyvisitors matches them per page, so sessions and engagement sit next to clicks, impressions, CTR and position.',
+      },
+      {
+        title: 'Local first',
+        body: 'OAuth with PKCE through a listener on 127.0.0.1, tokens and settings in your config directory. The only network traffic goes to the Google APIs.',
+      },
+      {
+        title: 'Rules, not a language model',
+        body: 'Insights, the management summary and the opportunity score (impact × confidence / effort) come from explicit rules. The insight thresholds are settings in config.toml, not constants.',
+      },
+      {
+        title: 'Before and after a change',
+        body: 'report compare puts two windows around a change date such as a deploy, for the whole site or one URL. report decay finds pages losing search performance period over period.',
+      },
+      {
+        title: 'Flags or a menu',
+        body: 'Every report is a subcommand with flags. Run auditmyvisitors without one and it walks through setup, runs the full report in one pass, then offers page drill-down and export.',
+      },
+    ]}
+  />
+
+  <BuildOutput
+    caption="Captured from auditmyvisitors 0.3.1 with site/captures/capture.sh. Reports need a Google login and show a real property's data, so the site shows help output only."
+    file="site/captures/help.txt"
+  >
+    <Terminal ansi={capture('help.txt')} />
+  </BuildOutput>
+
+  <Quickstart
+    lead="Install, log in, pick a property, run a report. The full walkthrough lives in the documentation."
+    steps={[
+      'Install the release binary with the install script, or download it from the GitHub releases page on Windows.',
+      'Log in with <code>auditmyvisitors auth login</code> and allow read-only access in the browser.',
+      'Choose a property with <code>auditmyvisitors properties select</code>, then run <code>auditmyvisitors report overview</code>.',
+    ]}
+  >
+    <CodeBlock code={usage} lang="sh" label="Usage" />
+  </Quickstart>
+</Base>

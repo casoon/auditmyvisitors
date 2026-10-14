@@ -1,0 +1,11 @@
+Before/after comparison around a change date
+
+Usage: auditmyvisitors report compare [OPTIONS] --since <SINCE>
+
+Options:
+      --url <URL>        The page URL (or omit for full-site comparison)
+      --before <BEFORE>  Days before the change date to include [default: 30]
+      --after <AFTER>    Days after the change date to include [default: 30]
+      --since <SINCE>    The change date (YYYY-MM-DD), e.g. a deploy date
+      --verbose          Enable verbose logging
+  -h, --help             Print help

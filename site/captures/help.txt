@@ -1,0 +1,16 @@
+Google Analytics 4 & Search Console reporting for website owners
+
+Usage: auditmyvisitors [OPTIONS] [COMMAND]
+
+Commands:
+  auth        Manage Google authentication
+  properties  List or select GA4 / Search Console properties
+  report      Generate reports
+  export      Export reports
+  snapshot    Manage local snapshots for trend tracking
+  help        Print this message or the help of the given subcommand(s)
+
+Options:
+      --verbose  Enable verbose logging
+  -h, --help     Print help
+  -V, --version  Print version
