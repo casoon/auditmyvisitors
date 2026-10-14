@@ -2,29 +2,29 @@
 import {
   Badge,
   Badges,
-  BuildOutput,
+  Button,
   CodeBlock,
   Facts,
   Features,
   Hero,
   Install,
   Quickstart,
-  Terminal,
 } from '@casoon/pages-theme/components';
 import Base from '@casoon/pages-theme/layouts/Base.astro';
-import { capture } from '../showcase';
+import { url } from '@casoon/pages-theme/url';
+// Animated SVG built with castwright from site/captures/help.terminal.yaml.
+import helpSvg from '../../captures/help.svg?url';
+import Diagram from '../components/Diagram.astro';
 
-const usage = `auditmyvisitors auth login          # log in with Google (opens the browser)
-auditmyvisitors properties select   # pick the GA4 and Search Console property
-auditmyvisitors report overview     # traffic, search performance, insights
-auditmyvisitors report compare --since 2026-03-01
-auditmyvisitors export pdf --days 90`;
+const usage = `auditmyvisitors auth login          # sign in with Google
+auditmyvisitors properties select   # pick your website
+auditmyvisitors report overview     # your first report`;
 ---
 
 <Base>
   <Hero
-    title="GA4 and Search Console, one report, on your machine."
-    lead="auditmyvisitors combines Google Analytics 4 and Search Console in the terminal: site overview, top and weak pages, query performance, before/after comparisons around a change date, content decay, and a PDF export. It runs locally with your own Google login and read-only access. No backend, no BigQuery."
+    title="Your Analytics and Search Console, in plain answers."
+    lead="auditmyvisitors puts Google Analytics 4 and Search Console side by side and turns them into reports you can act on: which pages bring visitors, which ones Google shows but people rarely click, and what changed after your last update. It runs on your own computer, with your own Google login, and only ever reads."
   >
     <Install
       commands={[
@@ -36,68 +36,119 @@ auditmyvisitors export pdf --days 90`;
       ]}
     />
     <Badges>
-      <Badge>MIT</Badge>
+      <Badge>Free · MIT</Badge>
       <Badge>v0.3.1</Badge>
-      <Badge>Rust 1.88+</Badge>
-      <Badge>macOS arm64 · Linux · Windows</Badge>
+      <Badge>macOS · Linux · Windows</Badge>
     </Badges>
-    <Terminal
+    <img
       slot="output"
-      title="auditmyvisitors report --help"
-      dots
-      ansi={capture('report.txt')}
+      class="terminal-demo"
+      src={helpSvg}
+      width="561.6"
+      height="422"
+      alt="Terminal: auditmyvisitors --version prints 'auditmyvisitors 0.3.1'. auditmyvisitors --help then prints 'Google Analytics 4 & Search Console reporting for website owners' and the commands auth, properties, report, export, snapshot and help, with the options --verbose, --help and --version."
     />
   </Hero>
 
-  <Facts
-    items={[
-      { value: '12', label: 'reports, from overview to countries' },
-      { value: '3', label: 'export formats: PDF, JSON, CSV' },
-      { value: '2', label: 'Google scopes, both read-only' },
-      { value: '0', label: 'servers between you and the Google APIs' },
-    ]}
-  />
-
   <Features
+    heading="Who it is for"
     items={[
       {
-        title: 'Two sources, one view',
-        body: 'GA4 reports paths, Search Console full URLs. auditmyvisitors matches them per page, so sessions and engagement sit next to clicks, impressions, CTR and position.',
+        title: 'Site owners, SEO and marketing people',
+        body: 'You look after a website and want straight answers from GA4 and Search Console, without building dashboards or learning a BI tool.',
       },
       {
-        title: 'Local first',
-        body: 'OAuth with PKCE through a listener on 127.0.0.1, tokens and settings in your config directory. The only network traffic goes to the Google APIs.',
-      },
-      {
-        title: 'Rules, not a language model',
-        body: 'Insights, the management summary and the opportunity score (impact × confidence / effort) come from explicit rules. The insight thresholds are settings in config.toml, not constants.',
+        title: 'Answers instead of dashboards',
+        body: 'Which pages bring visitors, which ones rank but get few clicks, which are slowly losing ground, and where the easiest gains are, ranked by expected effect.',
       },
       {
         title: 'Before and after a change',
-        body: 'report compare puts two windows around a change date such as a deploy, for the whole site or one URL. report decay finds pages losing search performance period over period.',
+        body: 'Did the relaunch or the new page title help? Compare the weeks before and after a date, for the whole site or for a single page.',
       },
       {
-        title: 'Flags or a menu',
-        body: 'Every report is a subcommand with flags. Run auditmyvisitors without one and it walks through setup, runs the full report in one pass, then offers page drill-down and export.',
+        title: 'Something to pass on',
+        body: 'Save a full report as PDF for a client or a colleague, or single reports as CSV and JSON for your own spreadsheets.',
       },
     ]}
   />
 
-  <BuildOutput
-    caption="Captured from auditmyvisitors 0.3.1 with site/captures/capture.sh. Reports need a Google login and show a real property's data, so the site shows help output only."
-    file="site/captures/help.txt"
-  >
-    <Terminal ansi={capture('help.txt')} />
-  </BuildOutput>
+  <Facts
+    items={[
+      { value: '12', label: 'ready-made reports, from overview to countries' },
+      { value: '3', label: 'export formats: PDF, CSV and JSON' },
+      { value: '0', label: 'write access to your Google data' },
+      { value: '0', label: 'servers of ours between you and Google' },
+    ]}
+  />
+
+  <section class="how" aria-labelledby="how-heading">
+    <h2 id="how-heading">How it works</h2>
+    <div class="text">
+      <p>
+        You run auditmyvisitors on your own computer and sign in with Google once. It reads your
+        Analytics and Search Console data, puts both side by side for every page and shows the
+        result right in the terminal, or saves it as a file.
+      </p>
+      <p>
+        Your login and your data stay with you. auditmyvisitors only asks for read access, so it
+        cannot change anything in your Google accounts. There is no account with us, no tracking
+        and no server in between.
+      </p>
+    </div>
+    <Diagram name="how-it-works" format="svg" narrow={{ width: 560, height: 720 }} />
+    <div class="links">
+      <Button href={url('docs/guides/how-it-works/')} variant="secondary">How it works in detail</Button>
+      <Button href={url('docs/guides/data-and-privacy/')} variant="secondary">Data and privacy</Button>
+      <Button href="https://auditmyvisitors.casoon.de/" variant="quiet">Product website →</Button>
+    </div>
+  </section>
 
   <Quickstart
-    lead="Install, log in, pick a property, run a report. The full walkthrough lives in the documentation."
+    lead="Install it, sign in, pick your website, and the first report is on screen. Or just type auditmyvisitors and it walks you through the same steps in a menu."
     steps={[
-      'Install the release binary with the install script, or download it from the GitHub releases page on Windows.',
-      'Log in with <code>auditmyvisitors auth login</code> and allow read-only access in the browser.',
-      'Choose a property with <code>auditmyvisitors properties select</code>, then run <code>auditmyvisitors report overview</code>.',
+      'Install it with the line above. On Windows, download it from the GitHub releases page.',
+      'Sign in with your Google account and allow read access.',
+      'Pick your website and run your first report.',
     ]}
   >
-    <CodeBlock code={usage} lang="sh" label="Usage" />
+    <CodeBlock code={usage} lang="sh" label="Three commands" />
   </Quickstart>
 </Base>
+
+<style>
+  /* Never scale the SVG beyond a readable terminal size. */
+  .terminal-demo {
+    display: block;
+    width: 100%;
+    max-width: 720px;
+    height: auto;
+    margin: 0 auto;
+  }
+  .how {
+    max-width: var(--max);
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+  h2 {
+    margin: 0 0 14px;
+    color: var(--heading);
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .text {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+    gap: 0 48px;
+  }
+  .text p {
+    margin: 0 0 16px;
+    font-size: 15.5px;
+  }
+  .links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+  }
+</style>

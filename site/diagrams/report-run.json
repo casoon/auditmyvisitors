@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "type": "flow",
+  "title": "One report run",
+  "description": "A report reads the selected property from config.toml and an access token from tokens.json, refreshing it at Google sign-in when it has expired. It then asks the GA4 Data API and, if a Search Console property is selected, the Search Console API, matches both per page, applies the insight rules and prints the result or writes an export. report overview also stores a snapshot of the day's key metrics.",
+  "source": "src/main.rs, src/auth/refresh.rs, src/google/, src/helpers/mod.rs, src/insights/, src/snapshots/, src/export/",
+  "width": 960,
+  "height": 1080,
+  "flow": {
+    "lanes": [
+      {
+        "id": "machine",
+        "label": "Your machine"
+      },
+      {
+        "id": "google",
+        "label": "Google, read-only"
+      }
+    ],
+    "nodes": [
+      {
+        "id": "run",
+        "label": "report or export",
+        "sublabel": "subcommand or menu",
+        "kind": "start",
+        "lane": "machine"
+      },
+      {
+        "id": "config",
+        "label": "config.toml",
+        "sublabel": "property, defaults",
+        "kind": "store",
+        "lane": "machine"
+      },
+      {
+        "id": "token",
+        "label": "Token expired?",
+        "sublabel": "tokens.json",
+        "kind": "decision",
+        "lane": "machine"
+      },
+      {
+        "id": "refresh",
+        "label": "Google sign-in",
+        "sublabel": "token refresh",
+        "kind": "external",
+        "lane": "google"
+      },
+      {
+        "id": "ga4",
+        "label": "GA4 Data API",
+        "sublabel": "runReport",
+        "kind": "external",
+        "lane": "google"
+      },
+      {
+        "id": "gsc",
+        "label": "Search Console API",
+        "sublabel": "search analytics",
+        "kind": "external",
+        "lane": "google"
+      },
+      {
+        "id": "join",
+        "label": "Match per page",
+        "sublabel": "GA4 path, Search Console URL",
+        "lane": "machine"
+      },
+      {
+        "id": "rules",
+        "label": "Insights, scores",
+        "sublabel": "explicit rules",
+        "lane": "machine"
+      },
+      {
+        "id": "terminal",
+        "label": "Terminal",
+        "kind": "end",
+        "lane": "machine"
+      },
+      {
+        "id": "export",
+        "label": "PDF, CSV, JSON",
+        "kind": "end",
+        "lane": "machine"
+      },
+      {
+        "id": "snapshot",
+        "label": "Snapshot",
+        "sublabel": "report overview",
+        "kind": "store",
+        "lane": "machine"
+      }
+    ],
+    "edges": [
+      {
+        "from": "run",
+        "to": "config"
+      },
+      {
+        "from": "config",
+        "to": "token"
+      },
+      {
+        "from": "token",
+        "to": "refresh",
+        "label": "yes"
+      },
+      {
+        "from": "token",
+        "to": "ga4",
+        "label": "no"
+      },
+      {
+        "from": "refresh",
+        "to": "ga4"
+      },
+      {
+        "from": "ga4",
+        "to": "gsc",
+        "label": "if selected"
+      },
+      {
+        "from": "ga4",
+        "to": "join",
+        "label": "GA4 only",
+        "dash": "dashed"
+      },
+      {
+        "from": "gsc",
+        "to": "join"
+      },
+      {
+        "from": "join",
+        "to": "rules"
+      },
+      {
+        "from": "rules",
+        "to": "terminal"
+      },
+      {
+        "from": "rules",
+        "to": "export",
+        "label": "export"
+      },
+      {
+        "from": "rules",
+        "to": "snapshot",
+        "label": "overview",
+        "dash": "dashed"
+      }
+    ],
+    "mainPath": [
+      "run",
+      "config",
+      "token",
+      "ga4",
+      "gsc",
+      "join",
+      "rules",
+      "terminal"
+    ],
+    "orientation": "portrait"
+  }
+}

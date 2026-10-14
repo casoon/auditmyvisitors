@@ -20,6 +20,7 @@ export default defineConfig({
       ],
       // No CHANGELOG.md yet: the GitHub releases carry no notes to derive one from.
       changelog: false,
+      mdxComponents: './src/mdx-components.ts',
       docsGroups: {
         'getting-started': 'Getting started',
         guides: 'Guides',

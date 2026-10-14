@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "type": "sequence",
+  "title": "auditmyvisitors auth login",
+  "description": "The CLI creates a PKCE verifier and a random state, opens Google's consent page in the browser and waits on 127.0.0.1:9004. Google redirects back with a code; the CLI checks the state, exchanges code and verifier for tokens and stores them in tokens.json, readable by the owner only.",
+  "source": "src/auth/pkce.rs, src/auth/server.rs, src/storage/mod.rs",
+  "width": 960,
+  "height": 600,
+  "sequence": {
+    "participants": [
+      {
+        "id": "cli",
+        "label": "auditmyvisitors",
+        "sublabel": "PKCE verifier, state"
+      },
+      {
+        "id": "browser",
+        "label": "Browser",
+        "kind": "actor"
+      },
+      {
+        "id": "google",
+        "label": "Google sign-in",
+        "kind": "external"
+      },
+      {
+        "id": "listener",
+        "label": "Listener",
+        "sublabel": "127.0.0.1:9004"
+      },
+      {
+        "id": "tokens",
+        "label": "tokens.json",
+        "kind": "database"
+      }
+    ],
+    "messages": [
+      {
+        "from": "cli",
+        "to": "browser",
+        "label": "open consent URL with challenge and state"
+      },
+      {
+        "from": "browser",
+        "to": "google",
+        "label": "you allow two read-only scopes"
+      },
+      {
+        "from": "google",
+        "to": "listener",
+        "label": "redirect with code and state"
+      },
+      {
+        "from": "listener",
+        "to": "cli",
+        "label": "query string",
+        "kind": "reply"
+      },
+      {
+        "from": "cli",
+        "to": "google",
+        "label": "code and verifier for tokens"
+      },
+      {
+        "from": "google",
+        "to": "cli",
+        "label": "access and refresh token",
+        "kind": "reply"
+      },
+      {
+        "from": "cli",
+        "to": "tokens",
+        "label": "save, mode 0600"
+      }
+    ]
+  }
+}

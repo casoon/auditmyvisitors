@@ -1,0 +1,17 @@
+# Plays the captured help output in version.txt and help.txt (see capture.sh).
+version: 1
+terminal:
+  title: auditmyvisitors
+  cols: 64
+  rows: 21
+  theme: catppuccin-mocha
+steps:
+  - run: auditmyvisitors --version
+  - wait: 600
+  - show: version.txt
+    lang: text
+  - run: auditmyvisitors --help
+  - wait: 800
+  - show: help.txt
+    lang: text
+  - wait: 4000

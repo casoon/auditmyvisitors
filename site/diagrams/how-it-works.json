@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 1,
+  "type": "flow",
+  "title": "How auditmyvisitors works",
+  "description": "You start a report on your own computer. auditmyvisitors signs in with your Google account, reads Google Analytics 4 and Search Console with read-only access, puts both side by side per page and shows the result in the terminal or saves it as PDF, CSV or JSON.",
+  "source": "src/main.rs, src/google/, src/export/",
+  "width": 1100,
+  "height": 270,
+  "flow": {
+    "nodes": [
+      {
+        "id": "you",
+        "label": "You ask a question",
+        "sublabel": "on your own computer",
+        "kind": "start"
+      },
+      {
+        "id": "login",
+        "label": "Google sign-in",
+        "sublabel": "read-only, once"
+      },
+      {
+        "id": "ga4",
+        "label": "Google Analytics 4",
+        "sublabel": "visits, engagement",
+        "kind": "external"
+      },
+      {
+        "id": "sc",
+        "label": "Search Console",
+        "sublabel": "clicks, rankings",
+        "kind": "external"
+      },
+      {
+        "id": "combine",
+        "label": "Both side by side",
+        "sublabel": "per page"
+      },
+      {
+        "id": "screen",
+        "label": "Report on screen",
+        "kind": "end"
+      },
+      {
+        "id": "file",
+        "label": "PDF, CSV or JSON",
+        "kind": "end"
+      }
+    ],
+    "edges": [
+      {
+        "from": "you",
+        "to": "login"
+      },
+      {
+        "from": "login",
+        "to": "ga4",
+        "label": "reads"
+      },
+      {
+        "from": "login",
+        "to": "sc",
+        "label": "reads"
+      },
+      {
+        "from": "ga4",
+        "to": "combine"
+      },
+      {
+        "from": "sc",
+        "to": "combine"
+      },
+      {
+        "from": "combine",
+        "to": "screen"
+      },
+      {
+        "from": "combine",
+        "to": "file",
+        "label": "export",
+        "dash": "dashed"
+      }
+    ],
+    "mainPath": [
+      "you",
+      "login",
+      "ga4",
+      "combine",
+      "screen"
+    ],
+    "orientation": "landscape"
+  }
+}

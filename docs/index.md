@@ -23,6 +23,7 @@ x86_64. The product website is [auditmyvisitors.casoon.de](https://auditmyvisito
 - [Export](guides/export/): PDF, JSON and CSV.
 - [Configuration](guides/configuration/): `config.toml`, defaults, insight thresholds, clusters.
 - [Data and privacy](guides/data-and-privacy/): what is stored where, what the GA4 data covers.
+- [How it works](guides/how-it-works/): the login, one report run, the Google APIs it reads.
 - [CLI reference](reference/cli/): every command and flag.
 
 ## What it is not

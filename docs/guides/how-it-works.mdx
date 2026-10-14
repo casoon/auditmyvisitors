@@ -1,0 +1,50 @@
+---
+title: How it works
+description: What happens during a login and a report run, what runs on your machine and what Google sees.
+order: 5
+---
+
+auditmyvisitors is one binary on your machine. It has no server of its own: everything it
+knows comes from the Google APIs, read with your own login, and everything it keeps stays in
+your config directory (see [Data and privacy](../data-and-privacy/)).
+
+## Login
+
+`auditmyvisitors auth login` uses the OAuth authorization code flow with PKCE, the flow Google
+recommends for installed apps. The CLI opens Google's consent page in your browser and waits
+for the answer on a local listener at `127.0.0.1:9004`. A random `state` value guards the
+redirect; if it does not match, the login is aborted.
+
+<Diagram name="login" />
+
+The access token is refreshed automatically with the stored refresh token when it has expired.
+`auditmyvisitors auth logout` deletes `tokens.json`.
+
+## A report run
+
+Every report and every export goes through the same steps. Nothing is cached between runs: each
+run fetches live data, so the numbers match what GA4 and Search Console show at that moment.
+
+<Diagram name="report-run" />
+
+- **Two sources, one view.** GA4 reports page paths, Search Console full URLs. Where a report
+  uses both, they are matched per page path, so sessions and engagement sit next to clicks,
+  impressions, CTR and position. Which reports need Search Console is listed under
+  [Reports](../reports/).
+- **Rules, not a language model.** Insights, the management summary and the opportunity score
+  come from explicit rules in the code. The limits the insight rules use are settings in
+  [config.toml](../configuration/), not constants.
+- **Snapshots.** `report overview` stores the day's key metrics, so a run on a later day can
+  show the change since then.
+- **Retries.** Each Google request is tried up to three times on rate limits and server errors
+  and times out after 30 seconds.
+
+## The Google APIs it reads
+
+| API | Used for | Scope |
+| --- | --- | --- |
+| Google Analytics Admin API | listing the GA4 properties you can read | `analytics.readonly` |
+| Google Analytics Data API | traffic, engagement, channels, devices, countries | `analytics.readonly` |
+| Search Console API | clicks, impressions, CTR, position; sitemaps and URL inspection for the PDF | `webmasters.readonly` |
+
+Both scopes are read-only: auditmyvisitors cannot change anything in GA4 or Search Console.
