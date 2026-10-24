@@ -11,6 +11,8 @@ export default defineConfig({
       name: 'auditmyvisitors',
       description:
         'Local CLI reporting for Google Analytics 4 and Search Console: overviews, page and query analysis, before/after comparisons and PDF export. No backend, read-only access.',
+      tagline: 'GA4 and Search Console in the terminal',
+      website: 'https://auditmyvisitors.casoon.de',
       repo: 'casoon/auditmyvisitors',
       version: '0.3.1',
       license: 'MIT',
