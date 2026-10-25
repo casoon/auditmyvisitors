@@ -14,7 +14,6 @@ export default defineConfig({
       tagline: 'GA4 and Search Console in the terminal',
       website: 'https://auditmyvisitors.casoon.de',
       repo: 'casoon/auditmyvisitors',
-      version: '0.3.1',
       license: 'MIT',
       packages: [
         { label: 'Website', href: 'https://auditmyvisitors.casoon.de/' },
