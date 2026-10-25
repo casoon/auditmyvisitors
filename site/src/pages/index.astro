@@ -11,6 +11,7 @@ import {
   Quickstart,
 } from '@casoon/pages-theme/components';
 import Base from '@casoon/pages-theme/layouts/Base.astro';
+import config from 'virtual:casoon-pages/config';
 import { url } from '@casoon/pages-theme/url';
 // Animated SVG built with castwright from site/captures/help.terminal.yaml.
 import helpSvg from '../../captures/help.svg?url';
@@ -37,7 +38,7 @@ auditmyvisitors report overview     # your first report`;
     />
     <Badges>
       <Badge>Free · MIT</Badge>
-      <Badge>v0.3.1</Badge>
+      <Badge>v{config.version}</Badge>
       <Badge>macOS · Linux · Windows</Badge>
     </Badges>
     <img
