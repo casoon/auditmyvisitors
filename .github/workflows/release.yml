@@ -12,6 +12,10 @@ jobs:
   build:
     name: Build ${{ matrix.artifact }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     strategy:
       matrix:
         include:
@@ -53,6 +57,11 @@ jobs:
         run: |
           cp target/${{ matrix.target }}/release/${{ matrix.binary }} ${{ matrix.artifact }}
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: ${{ matrix.artifact }}
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
@@ -72,6 +81,10 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Combined checksums
+        working-directory: artifacts
+        run: sha256sum auditmyvisitors-* > SHA256SUMS
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
@@ -88,4 +101,5 @@ jobs:
             curl -fsSL https://raw.githubusercontent.com/casoon/auditmyvisitors/main/install.sh | bash
             ```
 
-            **Manual download:** see assets below.
+            **Manual download:** see assets below. Verify it with `SHA256SUMS` and
+            `gh attestation verify <file> --repo casoon/auditmyvisitors`.
