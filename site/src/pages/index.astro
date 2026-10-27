@@ -1,17 +1,21 @@
 ---
+import { readFile } from 'node:fs/promises';
 import {
   Badge,
   Badges,
   Button,
   CodeBlock,
   Facts,
+  Faq,
   Features,
   Hero,
   Install,
   Quickstart,
+  ReleaseHighlights,
 } from '@casoon/pages-theme/components';
 import Base from '@casoon/pages-theme/layouts/Base.astro';
 import config from 'virtual:casoon-pages/config';
+import { parseChangelog } from '@casoon/pages-theme/lib/changelog';
 import { url } from '@casoon/pages-theme/url';
 // Animated SVG built with castwright from site/captures/help.terminal.yaml.
 import helpSvg from '../../captures/help.svg?url';
@@ -20,6 +24,13 @@ import Diagram from '../components/Diagram.astro';
 const usage = `auditmyvisitors auth login          # sign in with Google
 auditmyvisitors properties select   # pick your website
 auditmyvisitors report overview     # your first report`;
+
+// Skip "Unreleased": it has no version to show as "New in v…" yet.
+const latestRelease = config.changelog
+  ? parseChangelog(await readFile(config.changelog, 'utf8')).find(
+      (r) => r.version.toLowerCase() !== 'unreleased'
+    )
+  : undefined;
 ---
 
 <Base>
@@ -114,6 +125,29 @@ auditmyvisitors report overview     # your first report`;
   >
     <CodeBlock code={usage} lang="sh" label="Three commands" />
   </Quickstart>
+
+  {latestRelease && <ReleaseHighlights release={latestRelease} />}
+
+  <Faq
+    items={[
+      {
+        q: 'Does auditmyvisitors ever change anything in my Google Analytics or Search Console?',
+        a: "No. Login only requests the analytics.readonly and webmasters.readonly scopes, so it can read data but never modify, delete, or configure anything in either account.",
+      },
+      {
+        q: 'Where does my data live, and who can see it?',
+        a: 'Everything stays on your own machine: OAuth tokens, your selected properties, and the metrics saved by each overview run, kept in a config folder that on macOS and Linux only your own account can read. There is no server of ours in between.',
+      },
+      {
+        q: 'Can I undo the login or remove what is stored locally?',
+        a: 'Yes. auth logout deletes the stored tokens, and you can revoke access from your Google account at any time. Nothing is sent anywhere beyond the Google APIs to begin with.',
+      },
+      {
+        q: 'Does it use BigQuery or raw event data?',
+        a: "Not currently. Reports come from the GA4 Data API's aggregated reporting data and the Search Console API, so the GA4 data retention setting for non-aggregated data such as Explorations does not limit what auditmyvisitors can show.",
+      },
+    ]}
+  />
 </Base>
 
 <style>
