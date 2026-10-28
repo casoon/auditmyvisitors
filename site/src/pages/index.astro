@@ -10,6 +10,7 @@ import {
   Features,
   Hero,
   Install,
+  Integrations,
   Quickstart,
   ReleaseHighlights,
 } from '@casoon/pages-theme/components';
@@ -90,6 +91,24 @@ const latestRelease = config.changelog
       { value: '3', label: 'export formats: PDF, CSV and JSON' },
       { value: '0', label: 'write access to your Google data' },
       { value: '0', label: 'servers of ours between you and Google' },
+    ]}
+  />
+
+  <Integrations
+    heading="Works with"
+    items={[
+      {
+        icon: 'GA4',
+        name: 'Google Analytics 4',
+        category: 'Visitors, pages, traffic sources',
+        href: url('docs/guides/how-it-works/'),
+      },
+      {
+        icon: 'GSC',
+        name: 'Search Console',
+        category: 'Rankings, impressions, clicks',
+        href: url('docs/guides/how-it-works/'),
+      },
     ]}
   />
 
