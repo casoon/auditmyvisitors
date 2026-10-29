@@ -51,6 +51,22 @@ DOWNLOAD_URL="https://github.com/$REPO/releases/download/$VERSION/$ARTIFACT"
 
 echo "Installing auditmyvisitors $VERSION ..."
 curl -fsSL "$DOWNLOAD_URL" -o "/tmp/$BINARY"
+
+# Verify against the release's SHA256SUMS before installing anything
+EXPECTED="$(curl -fsSL "https://github.com/$REPO/releases/download/$VERSION/SHA256SUMS" \
+  | awk -v n="$ARTIFACT" '$2 == n { print $1 }')"
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL="$(sha256sum "/tmp/$BINARY" | cut -d ' ' -f 1)"
+elif command -v shasum >/dev/null 2>&1; then
+  ACTUAL="$(shasum -a 256 "/tmp/$BINARY" | cut -d ' ' -f 1)"
+else
+  rm -f "/tmp/$BINARY"
+  echo "No sha256sum or shasum found; cannot verify the download." && exit 1
+fi
+if [ -z "$EXPECTED" ] || [ "$EXPECTED" != "$ACTUAL" ]; then
+  rm -f "/tmp/$BINARY"
+  echo "Checksum mismatch for $ARTIFACT $VERSION; not installing." && exit 1
+fi
 chmod +x "/tmp/$BINARY"
 
 mkdir -p "$INSTALL_DIR"

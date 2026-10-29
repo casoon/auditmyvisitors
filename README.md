@@ -54,7 +54,17 @@ curl -fsSL https://raw.githubusercontent.com/casoon/auditmyvisitors/main/install
 
 Installs `auditmyvisitors` to `~/.local/bin`. Set `INSTALL_DIR` to choose a different location.
 
-macOS builds are Apple Silicon only. On an Intel Mac, build from source.
+The installer checks the download against the release's `SHA256SUMS` before installing it. macOS builds are Apple Silicon only. On an Intel Mac, build from source.
+
+Official binaries come only from the
+[GitHub releases of `casoon/auditmyvisitors`](https://github.com/casoon/auditmyvisitors/releases) —
+built there by the release workflow, never on a developer machine. To verify a
+download by hand, check the hash and the signed build provenance:
+
+```bash
+grep " <file>" SHA256SUMS | shasum -a 256 -c
+gh attestation verify <file> --repo casoon/auditmyvisitors
+```
 
 ### Windows
 
