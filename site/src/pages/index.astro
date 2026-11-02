@@ -4,6 +4,7 @@ import {
   Badge,
   Badges,
   Button,
+  CallToAction,
   CodeBlock,
   Facts,
   Faq,
@@ -166,6 +167,12 @@ const latestRelease = config.changelog
         a: "Not currently. Reports come from the GA4 Data API's aggregated reporting data and the Search Console API, so the GA4 data retention setting for non-aggregated data such as Explorations does not limit what auditmyvisitors can show.",
       },
     ]}
+  />
+
+  <CallToAction
+    title="Your first report in a few minutes."
+    href={url('docs/getting-started/quickstart/')}
+    label="Read the quickstart"
   />
 </Base>
 
