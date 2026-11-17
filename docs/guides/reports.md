@@ -44,6 +44,33 @@ clusters. Each run saves a snapshot of the key metrics under the property's name
 a snapshot from an earlier day exists, the overview compares against the most recent one.
 `auditmyvisitors snapshot list` shows the saved snapshots.
 
+### Example output
+
+Example from the README (fictional domain), not a run against a real property:
+
+```text
+OVERVIEW  ·  last 28 days
+Property: my-website.com
+
+Metric                  Value
+Total sessions          12,480
+  organic               7,340 (59%)
+  direct                3,120 (25%)
+Engagement rate         64%
+
+SEARCH CONSOLE
+Clicks                  2,105
+Impressions             87,400
+CTR                     2.4%
+Avg. position           14.3
+
+[WARN] Insights
+
+* Search (1)
+  - High impressions, but low CTR
+    Remedy: 87,400 impressions at only 2.4% CTR. Consider improving title and meta description.
+```
+
 ## top-pages
 
 ```sh

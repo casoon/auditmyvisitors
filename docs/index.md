@@ -31,4 +31,5 @@ x86_64. The product website is [auditmyvisitors.casoon.de](https://auditmyvisito
 Not a BI platform, not a Looker Studio replacement, not a BigQuery warehouse product and not a
 raw-event funnel tool. It works with aggregated GA4 reporting data and Search Console data;
 analyses that need raw events (funnels, event sequences, exact query-to-conversion attribution)
-are outside its scope.
+are outside its scope. It does not join the data with your own systems (CRM, CMS or product
+databases).
